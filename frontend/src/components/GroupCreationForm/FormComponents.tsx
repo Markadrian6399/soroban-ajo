@@ -1,4 +1,5 @@
 import React from 'react'
+import { FieldErrors } from 'react-hook-form'
 import { FormErrors } from './types'
 
 interface FormFieldProps {
@@ -10,46 +11,30 @@ interface FormFieldProps {
 }
 
 /**
- * Reusable form field component with error display
+ * Reusable form field component with error display (legacy — used by non-RHF steps)
  */
-export const FormField: React.FC<FormFieldProps> = ({
-  id,
-  label,
-  input,
-  touched,
-  error,
-}) => (
+export const FormField: React.FC<FormFieldProps> = ({ id, label, input, touched, error }) => (
   <div>
-    <label
-      htmlFor={id}
-      className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1"
-    >
+    <label htmlFor={id} className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">
       {label}
     </label>
     {input}
     {touched && error && (
-      <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">
-        {error}
-      </p>
+      <p className="mt-1 text-sm text-red-600 dark:text-red-400" role="alert">{error}</p>
     )}
   </div>
 )
 
 interface ErrorSummaryProps {
-  errors: FormErrors
+  // Accept both RHF FieldErrors and legacy FormErrors
+  errors: FieldErrors | FormErrors
   submitted: boolean
-  ref?: React.Ref<HTMLDivElement>
 }
 
-/**
- * Error summary component for displaying validation errors
- */
 export const ErrorSummary = React.forwardRef<HTMLDivElement, ErrorSummaryProps>(
   ({ errors, submitted }, ref) => {
-    const hasErrors = Object.keys(errors).length > 0
-
-    if (!hasErrors || !submitted) return null
-
+    const count = Object.keys(errors).length
+    if (!count || !submitted) return null
     return (
       <div
         ref={ref}
@@ -59,8 +44,7 @@ export const ErrorSummary = React.forwardRef<HTMLDivElement, ErrorSummaryProps>(
         tabIndex={-1}
       >
         <p className="text-sm font-medium text-red-800">
-          Please fix {Object.keys(errors).length} error
-          {Object.keys(errors).length > 1 ? 's' : ''} before submitting
+          Please fix {count} error{count > 1 ? 's' : ''} before continuing
         </p>
       </div>
     )

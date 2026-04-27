@@ -1,75 +1,49 @@
-import { FormErrors, GroupFormData } from './types'
+import { z } from 'zod'
 
-/**
- * Validates a single form field based on predefined rules
- */
-export const validateField = (name: string, value: any): string | undefined => {
-  switch (name) {
-    case 'groupName':
-      if (!value?.trim()) return 'Group name is required'
-      if (value.trim().length < 3) return 'Group name must be at least 3 characters'
-      if (value.trim().length > 100) return 'Group name must not exceed 100 characters'
-      return undefined
-    case 'description':
-      if (value && value.length > 500) return 'Description must not exceed 500 characters'
-      return undefined
-    case 'cycleLength':
-      if (!value) return 'Cycle length is required'
-      if (value < 1) return 'Cycle length must be at least 1 day'
-      if (value > 365) return 'Cycle length must not exceed 365 days'
-      return undefined
-    case 'contributionAmount':
-      if (!value) return 'Contribution amount is required'
-      if (value <= 0) return 'Contribution amount must be greater than 0'
-      if (value > 1000000) return 'Contribution amount must not exceed 1,000,000'
-      return undefined
-    case 'maxMembers':
-      if (!value) return 'Max members is required'
-      if (value < 2) return 'Group must allow at least 2 members'
-      if (value > 50) return 'Group cannot exceed 50 members'
-      return undefined
-    default:
-      return undefined
-  }
-}
+export const basicInfoSchema = z.object({
+  groupName: z
+    .string()
+    .min(1, 'Group name is required')
+    .min(3, 'Group name must be at least 3 characters')
+    .max(100, 'Group name must not exceed 100 characters')
+    .trim(),
+  description: z
+    .string()
+    .max(500, 'Description must not exceed 500 characters')
+    .optional()
+    .default(''),
+  category: z.string().optional().default('All'),
+})
 
-/**
- * Validates a specific step of the form
- */
-export const validateStep = (
-  step: number,
-  formData: GroupFormData,
-  currentErrors: FormErrors
-): { valid: boolean; errors: FormErrors } => {
-  const stepFields: Record<number, (keyof FormErrors)[]> = {
-    1: ['groupName', 'description'],
-    2: ['cycleLength', 'contributionAmount', 'maxMembers'],
-  }
-  const fields = stepFields[step] ?? []
-  const newErrors: FormErrors = { ...currentErrors }
-  let valid = true
+export const settingsSchema = z.object({
+  cycleLength: z
+    .number({ invalid_type_error: 'Cycle length is required' })
+    .int('Cycle length must be a whole number')
+    .min(1, 'Cycle length must be at least 1 day')
+    .max(365, 'Cycle length must not exceed 365 days'),
+  contributionAmount: z
+    .number({ invalid_type_error: 'Contribution amount is required' })
+    .positive('Contribution amount must be greater than 0')
+    .max(1_000_000, 'Contribution amount must not exceed 1,000,000'),
+  maxMembers: z
+    .number({ invalid_type_error: 'Max members is required' })
+    .int('Max members must be a whole number')
+    .min(2, 'Group must allow at least 2 members')
+    .max(50, 'Group cannot exceed 50 members'),
+  frequency: z.enum(['weekly', 'monthly']),
+  duration: z
+    .number({ invalid_type_error: 'Duration is required' })
+    .int()
+    .min(1, 'Duration must be at least 1 cycle'),
+})
 
-  fields.forEach((f) => {
-    const err = validateField(f, formData[f as keyof GroupFormData])
-    if (err) {
-      newErrors[f] = err
-      valid = false
-    } else {
-      delete newErrors[f]
-    }
-  })
+export const groupFormSchema = basicInfoSchema.merge(settingsSchema).extend({
+  invitedMembers: z.array(z.string()).default([]),
+})
 
-  return { valid, errors: newErrors }
-}
+export type BasicInfoValues = z.infer<typeof basicInfoSchema>
+export type SettingsValues = z.infer<typeof settingsSchema>
+export type GroupFormValues = z.infer<typeof groupFormSchema>
 
-/**
- * Validates the entire form
- */
-export const validateForm = (formData: GroupFormData): FormErrors => {
-  const newErrors: FormErrors = {}
-  Object.keys(formData).forEach((key) => {
-    const error = validateField(key, formData[key as keyof GroupFormData])
-    if (error) newErrors[key as keyof FormErrors] = error
-  })
-  return newErrors
-}
+// Keep legacy helpers for non-RHF steps (MembersStep, ReviewStep)
+export { validateField, validateStep, validateForm } from './validationLegacy'
