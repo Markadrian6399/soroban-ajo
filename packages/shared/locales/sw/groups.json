@@ -1,0 +1,14 @@
+{
+  "groups": {
+    "groups": "groups.groups",
+    "my_groups": "groups.my_groups",
+    "create_group": "groups.create_group",
+    "group_name": "groups.group_name",
+    "group_description": "groups.group_description",
+    "members": "groups.members",
+    "joined": "groups.joined",
+    "left": "groups.left",
+    "group_created": "groups.group_created",
+    "group_deleted": "groups.group_deleted"
+  }
+}

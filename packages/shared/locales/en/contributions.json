@@ -1,0 +1,12 @@
+{
+  "contributions": {
+    "contributions": "contributions.contributions",
+    "contribute": "contributions.contribute",
+    "contribution_amount": "contributions.contribution_amount",
+    "contribution_date": "contributions.contribution_date",
+    "contribution_status": "contributions.contribution_status",
+    "history": "contributions.history",
+    "made_contribution": "contributions.made_contribution",
+    "view_details": "contributions.view_details"
+  }
+}

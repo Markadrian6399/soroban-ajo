@@ -1,0 +1,12 @@
+{
+  "gamification": {
+    "achievements": "gamification.achievements",
+    "badges": "gamification.badges",
+    "points": "gamification.points",
+    "level": "gamification.level",
+    "unlock": "gamification.unlock",
+    "earned": "gamification.earned",
+    "progress": "gamification.progress",
+    "next_milestone": "gamification.next_milestone"
+  }
+}

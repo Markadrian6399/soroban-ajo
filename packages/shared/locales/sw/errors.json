@@ -1,0 +1,12 @@
+{
+  "errors": {
+    "error_occurred": "errors.error_occurred",
+    "try_again": "errors.try_again",
+    "not_found": "errors.not_found",
+    "unauthorized": "errors.unauthorized",
+    "forbidden": "errors.forbidden",
+    "server_error": "errors.server_error",
+    "network_error": "errors.network_error",
+    "validation_error": "errors.validation_error"
+  }
+}

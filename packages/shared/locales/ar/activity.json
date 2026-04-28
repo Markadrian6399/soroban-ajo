@@ -1,0 +1,11 @@
+{
+  "activity": {
+    "activity": "activity.activity",
+    "recent_activity": "activity.recent_activity",
+    "no_activity": "activity.no_activity",
+    "view_all": "activity.view_all",
+    "timestamp": "activity.timestamp",
+    "action": "activity.action",
+    "details": "activity.details"
+  }
+}

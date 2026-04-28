@@ -1,0 +1,11 @@
+{
+  "profile": {
+    "profile": "profile.profile",
+    "edit_profile": "profile.edit_profile",
+    "personal_info": "profile.personal_info",
+    "contact_info": "profile.contact_info",
+    "preferences": "profile.preferences",
+    "language_preference": "profile.language_preference",
+    "save_changes": "profile.save_changes"
+  }
+}

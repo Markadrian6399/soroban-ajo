@@ -1,0 +1,12 @@
+{
+  "leaderboard": {
+    "leaderboard": "leaderboard.leaderboard",
+    "rank": "leaderboard.rank",
+    "top_contributors": "leaderboard.top_contributors",
+    "points": "leaderboard.points",
+    "level": "leaderboard.level",
+    "achievements": "leaderboard.achievements",
+    "your_rank": "leaderboard.your_rank",
+    "see_more": "leaderboard.see_more"
+  }
+}
