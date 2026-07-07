@@ -198,7 +198,7 @@ export class SorobanService {
   private readonly server: StellarSdk.SorobanRpc.Server
   private readonly contractId: string
   private readonly networkPassphrase: string
-  private readonly contract: StellarSdk.Contract
+  private readonly _contract: StellarSdk.Contract | null
 
   constructor() {
     const contractId = process.env.SOROBAN_CONTRACT_ID || ''
@@ -208,14 +208,23 @@ export class SorobanService {
     this.contractId = contractId
     this.networkPassphrase = networkPassphrase
     this.server = new StellarSdk.SorobanRpc.Server(rpcUrl)
-    this.contract = new StellarSdk.Contract(this.contractId)
 
     if (!this.contractId) {
+      this._contract = null
       logger.warn('SOROBAN_CONTRACT_ID is not set. Contract calls will fail.', {
         rpcUrl,
         networkPassphrase: this.networkPassphrase,
       })
+    } else {
+      this._contract = new StellarSdk.Contract(this.contractId)
     }
+  }
+
+  private get contract(): StellarSdk.Contract {
+    if (!this._contract) {
+      throw new Error('SOROBAN_CONTRACT_ID is not set. Contract calls are unavailable.')
+    }
+    return this._contract
   }
 
   // READ methods — simulation only, no fee or signature required
