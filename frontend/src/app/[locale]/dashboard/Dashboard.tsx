@@ -10,6 +10,7 @@ import { UserGroupsDashboard } from '@/components/UserGroupsDashboard'
 import { StatsCard } from '@/components/dashboard/StatsCard'
 import { QuickActions } from '@/components/dashboard/QuickActions'
 import { RecentActivity } from '@/components/dashboard/RecentActivity'
+import { NoGroups } from '@/components/empty/NoGroups'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 
@@ -19,12 +20,19 @@ export default function Dashboard() {
   const joinGroupMutation = useJoinGroup()
 
   const {
-    viewMode, setViewMode,
-    filterStatus, setFilterStatus,
-    searchQuery, setSearchQuery,
-    currentPage, setCurrentPage,
-    totalPages, groups,
-    isLoading, stats, userAddress,
+    viewMode,
+    setViewMode,
+    filterStatus,
+    setFilterStatus,
+    searchQuery,
+    setSearchQuery,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    groups,
+    isLoading,
+    stats,
+    userAddress,
   } = useDashboard(address || undefined)
 
   const handleGroupClick = (groupId: string) => router.push(`/groups/${groupId}`)
@@ -41,8 +49,18 @@ export default function Dashboard() {
   const EmptyState = () => (
     <div className="text-center py-20 px-6 rounded-2xl backdrop-blur-md bg-white/10 dark:bg-white/5 border border-white/20 dark:border-white/10">
       <div className="mb-6">
-        <svg className="h-10 w-10 text-white/50 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        <svg
+          className="h-10 w-10 text-white/50 mx-auto"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+          />
         </svg>
       </div>
       <h3 className="text-xl font-bold text-white mb-2">No groups found</h3>
@@ -52,7 +70,10 @@ export default function Dashboard() {
           : 'Get started by creating or joining a savings group'}
       </p>
       {!searchQuery && filterStatus === 'all' && (
-        <button onClick={() => router.push('/groups/create')} className="mt-6 px-6 py-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold text-sm hover:opacity-90 transition-opacity">
+        <button
+          onClick={() => router.push('/groups/create')}
+          className="mt-6 px-6 py-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-semibold text-sm hover:opacity-90 transition-opacity"
+        >
           Create Your First Group
         </button>
       )}
@@ -71,44 +92,88 @@ export default function Dashboard() {
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8 animate-fade-in">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">Dashboard</h1>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+            Dashboard
+          </h1>
           <p className="mt-1 text-white/60 text-sm">Manage your savings groups</p>
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-fade-in-up" style={{ animationDelay: '50ms' }}>
+        <div
+          className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-fade-in-up"
+          style={{ animationDelay: '50ms' }}
+        >
           <StatsCard
             label="Total Savings"
             value={`${stats.totalSavingsXLM.toLocaleString()} XLM`}
             gradient="from-indigo-500 to-purple-600"
             isLoading={isLoading}
-            icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            }
           />
           <StatsCard
             label="Active Groups"
             value={stats.activeGroupsCount}
             gradient="from-emerald-500 to-teal-600"
             isLoading={isLoading}
-            icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>}
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+                />
+              </svg>
+            }
           />
           <StatsCard
             label="Groups Created"
             value={stats.createdGroupsCount}
             gradient="from-pink-500 to-rose-600"
             isLoading={isLoading}
-            icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>}
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            }
           />
           <StatsCard
             label="Groups Joined"
             value={stats.joinedGroupsCount}
             gradient="from-amber-500 to-orange-600"
             isLoading={isLoading}
-            icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" /></svg>}
+            icon={
+              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"
+                />
+              </svg>
+            }
           />
         </div>
 
         {/* Quick Actions + Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+        <div
+          className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6 animate-fade-in-up"
+          style={{ animationDelay: '100ms' }}
+        >
           <div className="lg:col-span-1">
             <QuickActions />
           </div>
@@ -120,7 +185,11 @@ export default function Dashboard() {
         {/* User Groups Dashboard */}
         {userAddress && (
           <div className="mb-6 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
-            <UserGroupsDashboard groups={groups ?? []} userAddress={userAddress} isLoading={isLoading} />
+            <UserGroupsDashboard
+              groups={groups ?? []}
+              userAddress={userAddress}
+              isLoading={isLoading}
+            />
           </div>
         )}
 
@@ -129,8 +198,18 @@ export default function Dashboard() {
           <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
             <div className="relative flex-1 max-w-md w-full">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <svg className="h-4 w-4 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <svg
+                  className="h-4 w-4 text-white/40"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  />
                 </svg>
               </div>
               <input
@@ -172,26 +251,47 @@ export default function Dashboard() {
           {!isLoading && (groups ?? []).length === 0 ? (
             <NoGroups onCreateGroup={() => router.push('/groups/create')} />
           ) : viewMode === 'grid' ? (
-            <GroupsGrid groups={groups ?? []} isLoading={isLoading} onGroupClick={handleGroupClick} />
+            <GroupsGrid
+              groups={groups ?? []}
+              isLoading={isLoading}
+              onGroupClick={handleGroupClick}
+            />
           ) : (
-            <GroupsList groups={groups} isLoading={isLoading} onGroupClick={handleGroupClick} onJoinGroup={handleJoinGroup} />
+            <GroupsList
+              groups={groups}
+              isLoading={isLoading}
+              onGroupClick={handleGroupClick}
+              onJoinGroup={handleJoinGroup}
+            />
           )}
         </div>
 
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="mt-8 flex justify-center items-center gap-2">
-            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-2 rounded-xl backdrop-blur-md bg-white/10 border border-white/20 text-white text-sm disabled:opacity-40 hover:bg-white/20 transition-colors">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-4 py-2 rounded-xl backdrop-blur-md bg-white/10 border border-white/20 text-white text-sm disabled:opacity-40 hover:bg-white/20 transition-colors"
+            >
               Previous
             </button>
             <div className="flex gap-1.5">
               {[...Array(totalPages)].map((_, i) => (
-                <button key={i} onClick={() => setCurrentPage(i + 1)} className={`w-9 h-9 rounded-xl text-sm font-medium transition-all ${currentPage === i + 1 ? 'bg-white/20 text-white border border-white/30' : 'text-white/50 hover:text-white hover:bg-white/10'}`}>
+                <button
+                  key={i}
+                  onClick={() => setCurrentPage(i + 1)}
+                  className={`w-9 h-9 rounded-xl text-sm font-medium transition-all ${currentPage === i + 1 ? 'bg-white/20 text-white border border-white/30' : 'text-white/50 hover:text-white hover:bg-white/10'}`}
+                >
                   {i + 1}
                 </button>
               ))}
             </div>
-            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-2 rounded-xl backdrop-blur-md bg-white/10 border border-white/20 text-white text-sm disabled:opacity-40 hover:bg-white/20 transition-colors">
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-4 py-2 rounded-xl backdrop-blur-md bg-white/10 border border-white/20 text-white text-sm disabled:opacity-40 hover:bg-white/20 transition-colors"
+            >
               Next
             </button>
           </div>

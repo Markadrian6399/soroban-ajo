@@ -53,7 +53,7 @@ export class PayPalService {
     this.defaultCurrency = process.env.PAYPAL_DEFAULT_CURRENCY || 'USD'
 
     if (!this.clientId || !this.clientSecret) {
-      throw new Error('PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables are required')
+      logger.warn('PAYPAL_CLIENT_ID/PAYPAL_CLIENT_SECRET are not set. PayPal calls will fail.')
     }
 
     this.baseUrl = this.environment === 'sandbox'
@@ -65,6 +65,10 @@ export class PayPalService {
    * Get PayPal access token
    */
   private async getAccessToken(): Promise<string> {
+    if (!this.clientId || !this.clientSecret) {
+      throw new Error('PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables are required')
+    }
+
     // Return cached token if still valid
     if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
       return this.accessToken

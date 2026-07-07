@@ -1,5 +1,6 @@
 # Rust
 target/
+target_local/
 Cargo.lock
 **/*.rs.bk
 *.pdb
@@ -24,7 +25,6 @@ Cargo.lock
 
 # Node & Next.js
 node_modules/
-package-lock.json/
 npm-debug.log
 yarn-error.log
 dist/
@@ -69,8 +69,5 @@ Thumbs.db
 .cache/
 .DS_Store
 
-# Kiro (allow specs to be tracked)
-.kiro/
-!.kiro/specs/
 .vercel
 .codex

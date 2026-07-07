@@ -15,22 +15,29 @@ const logger = createModuleLogger('StripeService')
 const prisma = new PrismaClient()
 
 export class StripeService {
-  private stripe: Stripe
+  private _stripe: Stripe | null = null
   private webhookSecret: string
   private defaultCurrency: string
 
   constructor() {
-    const secretKey = process.env.STRIPE_SECRET_KEY
     this.webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || ''
     this.defaultCurrency = process.env.STRIPE_DEFAULT_CURRENCY || 'usd'
 
-    if (!secretKey) {
+    const secretKey = process.env.STRIPE_SECRET_KEY
+    if (secretKey) {
+      this._stripe = new Stripe(secretKey, {
+        apiVersion: '2024-12-18.acacia' as any,
+      })
+    } else {
+      logger.warn('STRIPE_SECRET_KEY is not set. Stripe payment calls will fail.')
+    }
+  }
+
+  private get stripe(): Stripe {
+    if (!this._stripe) {
       throw new Error('STRIPE_SECRET_KEY environment variable is required')
     }
-
-    this.stripe = new Stripe(secretKey, {
-      apiVersion: '2024-12-18.acacia' as any,
-    })
+    return this._stripe
   }
 
   /**

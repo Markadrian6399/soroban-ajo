@@ -10,6 +10,9 @@ import { NotificationProvider } from '@/components/NotificationProvider'
 import { HelpProvider } from '@/contexts/HelpContext'
 import HelpPanel from '@/components/help/HelpPanel'
 import { ToastProvider } from '@/components/toast'
+import { initSentryClient } from '@/config/sentry'
+import { initGoogleAnalytics, trackWebVital } from '@/utils/googleAnalytics'
+import { observeWebVitals, observeResourceTiming, measurePageLoad } from '@/utils/monitoring'
 
 function OnboardingInitializer() {
   const startOnboardingIfNew = useOnboarding((s) => s.startOnboardingIfNew)
@@ -55,15 +58,17 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AuthProvider>
-          <HelpProvider>
-            <ToastProvider defaultPosition="top-right" maxVisible={5}>
-              <NotificationProvider>
-                <OnboardingInitializer />
-                {children}
-                <HelpPanel />
-              </NotificationProvider>
-            </ToastProvider>
-          </HelpProvider>
+          <OfflineProvider>
+            <HelpProvider>
+              <ToastProvider defaultPosition="top-right" maxVisible={5}>
+                <NotificationProvider>
+                  <OnboardingInitializer />
+                  {children}
+                  <HelpPanel />
+                </NotificationProvider>
+              </ToastProvider>
+            </HelpProvider>
+          </OfflineProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
