@@ -30,7 +30,7 @@ export const paymentWebhookHandler = {
 
       // Handle different event types
       switch (event.type) {
-        case 'payment_intent.succeeded':
+        case 'payment_intent.succeeded': {
           const paymentIntent = event.data.object
           await paymentGatewayService.confirmPayment(paymentIntent.id, {
             stripeEvent: event,
@@ -39,8 +39,9 @@ export const paymentWebhookHandler = {
             paymentIntentId: paymentIntent.id,
           })
           break
+        }
 
-        case 'payment_intent.payment_failed':
+        case 'payment_intent.payment_failed': {
           const failedIntent = event.data.object
           logger.error('Stripe payment failed', {
             paymentIntentId: failedIntent.id,
@@ -48,14 +49,16 @@ export const paymentWebhookHandler = {
           })
           // Update payment status in database
           break
+        }
 
-        case 'charge.refunded':
+        case 'charge.refunded': {
           const charge = event.data.object
           logger.info('Stripe charge refunded', {
             chargeId: charge.id,
           })
           // Update refund status in database
           break
+        }
 
         default:
           logger.info('Unhandled Stripe event type', {
@@ -95,7 +98,7 @@ export const paymentWebhookHandler = {
 
       // Handle different event types
       switch (event.event_type) {
-        case 'PAYMENT.CAPTURE.COMPLETED':
+        case 'PAYMENT.CAPTURE.COMPLETED': {
           const orderId = event.resource.id
           await paymentGatewayService.confirmPayment(orderId, {
             payPalEvent: event,
@@ -104,6 +107,7 @@ export const paymentWebhookHandler = {
             orderId,
           })
           break
+        }
 
         case 'PAYMENT.CAPTURE.DENIED':
           logger.error('PayPal payment denied', {
