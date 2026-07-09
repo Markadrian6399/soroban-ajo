@@ -1,266 +1,118 @@
-# Ajo - Decentralized Savings Groups
+# Ajo
 
-> 🟢 Issue #284 (Dispute Resolution and Arbitration System) has been implemented and resolved via PRs. This repository now includes filing, voting, and admin arbitration features.
+Ajo is a decentralized savings-group platform built on Stellar's Soroban smart contracts. It brings the traditional "Ajo" / "susu" / Rotating Savings and Credit Association (ROSCA) model on-chain, letting communities pool and cycle contributions with full transparency, auditable transaction history, and no central custodian.
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A blockchain-based savings group platform built on Stellar/Soroban, enabling communities to create and manage traditional "Ajo" or "Rotating Savings and Credit Associations" (ROSCAs) with full transparency and security.
+## Overview
 
-## 📖 Documentation
+The project is a monorepo with four independently deployable parts:
 
-**Interactive documentation site**: Run `npm run dev:docs` and visit http://localhost:3000
+| Component       | Path                             | Stack                                             |
+| --------------- | -------------------------------- | ------------------------------------------------- |
+| Smart contracts | [`contracts/ajo`](contracts/ajo) | Rust / Soroban                                    |
+| API server      | [`backend`](backend)             | Node.js, Express, TypeScript, Prisma              |
+| Web app         | [`frontend`](frontend)           | Next.js 14 (App Router), TypeScript, Tailwind CSS |
+| Mobile app      | [`mobile`](mobile)               | React Native / Expo                               |
 
-- [Getting Started Guide](http://localhost:3000/docs/getting-started)
-- [API Reference](http://localhost:3001/api-docs) - Interactive Swagger UI
-- [Architecture Overview](http://localhost:3000/docs/architecture)
-- [Smart Contracts](http://localhost:3000/docs/contracts)
+## Features
 
-## 🏗 Project Structure
+- Create and manage savings groups with configurable contribution rules
+- Member onboarding, invitations, and role management
+- Scheduled contributions and automated payout tracking
+- Fully auditable on-chain transaction history
+- Dispute filing, voting, and admin arbitration
+- Group analytics and gamification (achievements, leaderboards)
+- Stellar wallet integration (Freighter and others)
+- Multi-language support (English, Spanish, French, Portuguese, Arabic, Swahili, Chinese)
 
-```
-drips_maintener/
-├── frontend/          # Next.js web application
-│   └── src/
-│       ├── app/       # Next.js pages (App Router)
-│       ├── components/
-│       ├── hooks/
-│       └── services/
-├── backend/           # Node.js/Express API server
-│   └── src/
-│       ├── routes/    # API routes
-│       ├── controllers/
-│       ├── services/  # Soroban integration
-│       └── middleware/
-├── contracts/         # Soroban smart contracts (Rust)
-│   └── ajo/          # Main Ajo contract
-├── documentation/     # All project documentation
-└── package.json      # Monorepo root config
-```
-
-## 🚀 Quick Start
+## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
-- Rust 1.70+
-- Stellar CLI
+- Rust 1.70+ and the [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools#cli)
 - Git
 
-### Monorepo Setup
+### Installation
 
 ```bash
-# Clone repository
-git clone <repo-url>
-cd drips_maintener
+git clone https://github.com/Ajo-contrib/soroban-ajo.git
+cd soroban-ajo
 
-# Install all dependencies (frontend + backend)
+# Install root, frontend, and backend dependencies
 npm run install:all
 
-# Or install individually:
-npm install           # Root dependencies
-cd frontend && npm install
-cd ../backend && npm install
+# Mobile has its own dependency tree
+cd mobile && npm install
 ```
 
-### Smart Contracts (Rust/Soroban)
+### Configure environment variables
+
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+cp mobile/.env.example mobile/.env
+```
+
+Fill in your Stellar RPC URL and deployed contract ID in each file (see [Environment Variables](#environment-variables) below).
+
+### Run the smart contracts
 
 ```bash
 cd contracts/ajo
-
-# Build contract
 stellar contract build
-
-# Run tests
 cargo test
-
-# Deploy (with Stellar CLI configured)
-stellar contract deploy --wasm target/wasm32-unknown-unknown/release/ajo.wasm
 ```
 
-### Testnet Deployment (recommended)
-
-Use the helper script to deploy the contract to Stellar testnet:
+To deploy to testnet, use the helper script from the repo root:
 
 ```bash
-# From repo root
 scripts/deploy_testnet.sh
 ```
 
-What it does:
+This provisions a deployer identity, builds and optimizes the contract, deploys to Stellar testnet, and writes the resulting contract ID to `contract-id.txt`.
 
-- Ensures Soroban CLI, Rust, and testnet network config exist
-- Generates a `deployer` identity (if missing) and prompts you to fund it via friendbot
-- Builds and optimizes the contract
-- Deploys to testnet and writes the contract ID to `contract-id.txt`
-- Prints next steps and an explorer link
-
-See the full walkthrough in `demo/demo-script.md`.
-
-**Troubleshooting**
-
-- If deployment fails with funding errors: fund the deployer shown in the script output via `https://friendbot.stellar.org?addr=<address>`, then re-run.
-- If `soroban` can't find `testnet`: the script re-adds it, or you can run  
-  `soroban network add --global testnet --rpc-url https://soroban-testnet.stellar.org:443 --network-passphrase "Test SDF Network ; September 2015"`.
-
-### Backend API (Node.js/Express)
+### Run the backend and frontend
 
 ```bash
-cd backend
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your Stellar RPC URL and contract ID
-
-# Run development server
+# From the repo root — runs both concurrently
 npm run dev
 ```
 
-Runs on http://localhost:3001
+- Backend API: http://localhost:3001 (interactive API docs at `/api-docs`)
+- Frontend: http://localhost:3000
 
-### Frontend (Next.js)
-
-```bash
-cd frontend
-
-# Set up environment
-cp .env.example .env.local
-# Edit .env.local with your configuration
-
-# Run development server
-npm run dev
-```
-
-Visit http://localhost:3000
-
-### Run Everything Together
+Or run each independently:
 
 ```bash
-# From root directory
-npm run dev
+npm run dev:backend    # Express on :3001
+npm run dev:frontend   # Next.js on :3000
 ```
 
-This starts both frontend and backend concurrently.
-
-## 📚 Documentation
-
-Comprehensive documentation is available in the [`documentation/`](documentation/) folder:
-
-- **[Documentation Index](documentation/README.md)** - Complete documentation guide
-- **[Project Structure](PROJECT_STRUCTURE.md)** - Detailed project structure
-- **[Architecture](documentation/architecture/architecture.md)** - System design
-- **[Guides](documentation/guides/)** - Step-by-step guides
-- **[Development](documentation/development/)** - Development workflows
-- **[API Documentation](http://localhost:3001/api-docs)** - Interactive Swagger UI (when backend is running)
-
-### Quick Links
-
-- [Frontend README](frontend/README.md) - Next.js setup and development
-- [Backend README](backend/README.md) - API server setup and endpoints
-- [Contributing Guidelines](CONTRIBUTING.md) - How to contribute
-- [Refactoring Plan](documentation/development/REFACTORING_PLAN.md) - Code quality improvements
-
-## 🛠 Technology Stack
-
-### Smart Contracts
-
-- **Blockchain**: Stellar (Soroban)
-- **Language**: Rust
-- **Testing**: Rust test framework
-
-### Backend API
-
-- **Runtime**: Node.js 20+
-- **Framework**: Express.js 4.18
-- **Language**: TypeScript 5.2
-- **Blockchain SDK**: Stellar SDK 12.0
-- **Security**: Helmet, CORS
-- **Validation**: Zod
-
-### Frontend
-
-- **Framework**: Next.js 14 (App Router)
-- **Language**: TypeScript 5.2
-- **Styling**: Tailwind CSS 3.3
-- **State**: React Query + Zustand
-- **Blockchain SDK**: Stellar SDK 12.0
-- **Charts**: Recharts
-
-## 🎯 Features
-
-- ✅ Create savings groups with custom rules
-- ✅ Member onboarding and management
-- ✅ Scheduled contributions tracking
-- ✅ Transparent fund distribution
-- ✅ Transaction history on-chain
-- ✅ Group analytics and insights
-- ✅ Wallet integration (Freighter)
-
-## 🔧 Development
-
-### Prerequisites
-
-- Node.js 20+
-- Rust 1.70+
-- Stellar CLI
-- Git
-
-### Setup
+### Run the mobile app
 
 ```bash
-# Clone repository
-git clone <repo-url>
-cd drips_maintener
-
-# Install all dependencies
-npm run install:all
-
-# Set up contracts
-cd contracts/ajo
-cargo build
-
-# Set up backend
-cd ../../backend
-cp .env.example .env
-# Edit .env
-
-# Set up frontend
-cd ../frontend
-cp .env.example .env.local
-# Edit .env.local
+cd mobile
+npm start
 ```
 
-### Development Workflow
+## Environment Variables
 
-```bash
-# From root - run everything
-npm run dev
-
-# Or run individually:
-npm run dev:frontend    # Next.js on :3000
-npm run dev:backend     # Express on :3001
-
-# Build everything
-npm run build
-
-# Run tests
-npm run test:contracts  # Rust tests
-npm run type-check      # TypeScript checks
-npm run lint           # ESLint
-```
-
-## 📝 Environment Variables
-
-### Backend (`backend/.env`)
+**`backend/.env`**
 
 ```env
 NODE_ENV=development
 PORT=3001
 FRONTEND_URL=http://localhost:3000
+DATABASE_URL=postgresql://user:password@localhost:5432/ajo
+JWT_SECRET=<your_jwt_secret>
 SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
 SOROBAN_NETWORK_PASSPHRASE=Test SDF Network ; September 2015
 SOROBAN_CONTRACT_ID=<your_contract_id>
 ```
 
-### Frontend (`frontend/.env.local`)
+**`frontend/.env.local`**
 
 ```env
 NEXT_PUBLIC_SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
@@ -269,105 +121,47 @@ NEXT_PUBLIC_SOROBAN_CONTRACT_ID=<your_contract_id>
 NEXT_PUBLIC_API_URL=http://localhost:3001
 ```
 
-## 🧪 Testing
+See `backend/.env.example` and `frontend/.env.example` for the complete list of optional integrations (Stripe, PayPal, email, SMS, etc.).
 
-### Contracts
-
-```bash
-cd contracts/ajo
-cargo test
-```
-
-### Backend
+## Testing
 
 ```bash
-cd backend
-npm run type-check
-npm run lint
-npm test  # (when tests are added)
+npm run type-check      # TypeScript, frontend + backend
+npm run lint             # ESLint, frontend + backend
+npm run test:contracts   # Rust contract tests
 ```
 
-### Frontend
+## Deployment
 
-```bash
-cd frontend
-npm run type-check
-npm run lint
-```
+- **Contracts**: `stellar contract deploy` against testnet or mainnet (see [Smart Contract Documentation](docs/SMART_CONTRACT_DOCUMENTATION.md))
+- **Backend**: any Node.js host (Railway, Render, Fly.io, AWS/GCP/Azure) — `npm run build && npm start`
+- **Frontend**: [Vercel](https://vercel.com) — set the project's Root Directory to `frontend`
 
-### All at Once
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for full deployment instructions.
 
-```bash
-# From root
-npm run type-check
-npm run lint
-npm run test:contracts
-```
+## Documentation
 
-## 🚢 Deployment
+- [Developer Onboarding](docs/DEVELOPER_ONBOARDING.md)
+- [Architecture Decision Records](docs/ARCHITECTURE_DECISION_RECORDS.md)
+- [Smart Contract Documentation](docs/SMART_CONTRACT_DOCUMENTATION.md) / [Integration Guide](docs/SMART_CONTRACT_INTEGRATION.md)
+- [i18n Architecture](docs/I18N_ARCHITECTURE.md)
+- [User Guide](docs/USER_GUIDE.md) / [Tutorials](docs/USER_GUIDE_TUTORIALS.md)
+- [Frontend README](frontend/README.md) · [Backend README](backend/README.md) · [Mobile README](mobile/README.md)
 
-### Contracts
+## Contributing
 
-Deploy to Stellar testnet/mainnet using Stellar CLI:
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-```bash
-cd contracts/ajo
-stellar contract build
-stellar contract deploy --wasm target/wasm32-unknown-unknown/release/ajo.wasm --network testnet
-```
+## License
 
-### Backend
+Distributed under the terms of the [MIT License](LICENSE).
 
-Deploy to Railway, Render, Heroku, or any Node.js hosting:
+## Resources
 
-```bash
-cd backend
-npm run build
-npm start
-```
-
-Recommended platforms:
-
-- Railway (easiest)
-- Render
-- DigitalOcean App Platform
-- Heroku
-- AWS/GCP/Azure
-
-### Frontend
-
-Deploy to Vercel (recommended for Next.js):
-
-```bash
-cd frontend
-npm run build
-npm start
-```
-
-Or one-click deploy:
-
-- Vercel (recommended)
-- Netlify
-- Cloudflare Pages
-
-### Environment Variables
-
-Remember to set all required environment variables in your hosting platform.
-
-## 🤝 Contributing
-
-See [CONTRIBUTING.md](documentation/CONTRIBUTING.md) for guidelines.
-
-## 📄 License
-
-See [LICENSE](LICENSE) file.
-
-## 🔗 Resources
-
-- [Stellar Documentation](https://developers.stellar.org/)
+- [Stellar Developer Docs](https://developers.stellar.org/)
 - [Soroban Docs](https://soroban.stellar.org/docs)
 - [Next.js Documentation](https://nextjs.org/docs)
 
-## 📧 Support
+## Support
 
-For questions and support, please open an issue on GitHub.
+For questions, bug reports, or feature requests, please [open an issue](https://github.com/Ajo-contrib/soroban-ajo/issues).
