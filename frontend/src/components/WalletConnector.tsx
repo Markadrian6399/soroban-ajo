@@ -74,8 +74,8 @@ export const WalletConnector: React.FC = () => {
         icon: '⭐',
         description: 'Web-based wallet',
       },
-    ];
-  }, [walletDetection]);
+    ]
+  }, [walletDetection])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -178,7 +178,7 @@ export const WalletConnector: React.FC = () => {
                 setShowWalletSelection(false)
               }}
             />
-            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md z-50">
+            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto z-50">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                   {pendingTwoFactor ? 'Enter authentication code' : 'Select Wallet'}
@@ -248,10 +248,11 @@ export const WalletConnector: React.FC = () => {
                         key={wallet.provider}
                         onClick={() => handleConnect(wallet.provider)}
                         disabled={!wallet.isInstalled}
-                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${wallet.isInstalled
+                        className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                          wallet.isInstalled
                             ? 'border-gray-200 hover:border-blue-500 hover:bg-blue-50 dark:border-gray-700 dark:hover:border-blue-500 dark:hover:bg-blue-900/20 cursor-pointer'
                             : 'border-gray-100 bg-gray-50 dark:border-gray-800 dark:bg-gray-900 cursor-not-allowed opacity-60'
-                          }`}
+                        }`}
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
@@ -390,10 +391,11 @@ export const WalletConnector: React.FC = () => {
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${activeTab === tab
+                  className={`flex-1 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors ${
+                    activeTab === tab
                       ? 'text-blue-600 border-b-2 border-blue-600 -mb-px bg-blue-50/30'
                       : 'text-gray-400 hover:text-gray-600'
-                    }`}
+                  }`}
                 >
                   {tab}
                 </button>
