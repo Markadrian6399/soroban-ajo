@@ -168,17 +168,17 @@ export const WalletConnector: React.FC = () => {
 
         {/* Wallet Selection Modal */}
         {(showWalletSelection || pendingTwoFactor) && (
-          <>
-            <div
-              className="fixed inset-0 bg-black/50 z-50"
-              onClick={() => {
-                if (pendingTwoFactor) {
-                  cancelTwoFactor()
-                }
-                setShowWalletSelection(false)
-              }}
-            />
-            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md max-h-[85vh] overflow-y-auto z-50">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+            onClick={(event) => {
+              if (event.target !== event.currentTarget) return
+              if (pendingTwoFactor) {
+                cancelTwoFactor()
+              }
+              setShowWalletSelection(false)
+            }}
+          >
+            <div className="my-auto max-h-[85vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-gray-800">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white">
                   {pendingTwoFactor ? 'Enter authentication code' : 'Select Wallet'}
@@ -323,7 +323,7 @@ export const WalletConnector: React.FC = () => {
                 </>
               )}
             </div>
-          </>
+          </div>
         )}
 
         {connectError && (
