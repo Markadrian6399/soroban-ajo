@@ -151,25 +151,27 @@ describe('GroupsController', () => {
   });
 
   describe('createGroup', () => {
-    it('should create a new group', async () => {
+    it('should return the unsigned XDR for phase 1 (no signedXdr in the request)', async () => {
       const groupData = GroupFactory.create();
+      mockSorobanService.createGroup.mockResolvedValue({ unsignedXdr: 'AAAA...XDR' });
       const req = createMockRequest({ body: groupData });
       const res = createMockResponse();
 
       await controller.createGroup(req, res, mockNext);
 
-      expect(res.statusCode).toBe(201);
+      expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body).toHaveProperty('data');
+      expect(res.body.data).toHaveProperty('unsignedXdr');
     });
 
     it('should handle missing required fields', async () => {
+      mockSorobanService.createGroup.mockResolvedValue({ unsignedXdr: 'AAAA...XDR' });
       const req = createMockRequest({ body: {} });
       const res = createMockResponse();
 
       await controller.createGroup(req, res, mockNext);
 
-      expect(res.statusCode).toBe(201);
+      expect(res.statusCode).toBe(200);
     });
 
     it('should call next on error', async () => {

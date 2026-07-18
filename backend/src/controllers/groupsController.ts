@@ -4,6 +4,8 @@ import { NotFoundError } from '../errors/AppError'
 import { asyncHandler } from '../middleware/errorHandler'
 import { gamificationService } from '../services/gamification/GamificationService'
 import { logger } from '../utils/logger'
+import { executeGroupCreationSaga } from '../sagas/groupCreationSaga'
+import { ErrorReporter } from '../utils/errorReporter'
 
 /**
  * Parses and validates `?page` and `?limit` query parameters.
@@ -64,16 +66,57 @@ export class GroupsController {
    */
   createGroup = asyncHandler(async (req: Request, res: Response, _next: NextFunction) => {
     const groupData = req.body // Already validated by middleware
-    const result = await this.sorobanService.createGroup(groupData)
 
-    // Phase 1: return XDR for client signing
-    if (result.unsignedXdr) {
+    // Phase 1: no signedXdr yet — just build the XDR for the client to sign.
+    // Nothing has happened on-chain or in the DB, so there's no saga yet.
+    if (!groupData.signedXdr) {
+      const result = await this.sorobanService.createGroup(groupData)
       res.status(200).json({ success: true, data: result })
       return
     }
 
-    // Phase 2: confirmed on-chain
-    return res.status(201).json({ success: true, data: result })
+    // Phase 2: signedXdr present — submitting it and persisting the
+    // resulting DB row/members/notifications is exactly the multi-system
+    // transaction the group-creation saga exists to make crash-safe.
+    const sagaResult = await executeGroupCreationSaga({
+      adminPublicKey: groupData.adminPublicKey,
+      signedXdr: groupData.signedXdr,
+      name: groupData.name,
+      description: groupData.description,
+      contributionAmount: groupData.contributionAmount,
+      frequency: Number(groupData.frequency) || 30,
+      maxMembers: groupData.maxMembers,
+      members: [groupData.adminPublicKey],
+    })
+
+    if (sagaResult.status === 'failed') {
+      res.status(502).json({
+        success: false,
+        error: 'Group creation failed and was rolled back',
+        sagaId: sagaResult.sagaId,
+      })
+      return
+    }
+
+    if (sagaResult.status === 'needs_reconciliation') {
+      // The on-chain group was created, but persisting it (or a downstream
+      // step) is stuck — surface what we have rather than pretending it
+      // failed outright. The saga monitor will alert on-call separately.
+      logger.error('Group creation needs manual reconciliation', { sagaId: sagaResult.sagaId })
+      ErrorReporter.captureMessage(`Group creation saga ${sagaResult.sagaId} needs reconciliation`, 'error')
+      res.status(202).json({
+        success: true,
+        data: { groupId: sagaResult.context.groupId, txHash: sagaResult.context.txHash },
+        warning: 'Group was created on-chain but is still being synced — this may take a moment.',
+        sagaId: sagaResult.sagaId,
+      })
+      return
+    }
+
+    res.status(201).json({
+      success: true,
+      data: { groupId: sagaResult.context.groupId, txHash: sagaResult.context.txHash },
+    })
   })
 
   /**

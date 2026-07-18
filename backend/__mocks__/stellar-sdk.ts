@@ -90,6 +90,31 @@ class MockAddress {
 
 const mockNativeToScVal = jest.fn()
 
+// --- Keypair mock ---
+
+const mockKeypairSign = jest.fn()
+const mockKeypairFromSecret = jest.fn()
+
+class MockKeypair {
+  constructor(private readonly secret: string) {}
+
+  publicKey() {
+    return 'GKEEPERMOCKPUBLICKEY00000000000000000000000000000000000'
+  }
+
+  sign(data: Buffer) {
+    return mockKeypairSign(data)
+  }
+
+  static fromSecret(secret: string) {
+    mockKeypairFromSecret(secret)
+    if (secret === 'invalid-secret') {
+      throw new Error('Invalid secret key')
+    }
+    return new MockKeypair(secret)
+  }
+}
+
 // --- SorobanRpc namespace ---
 
 const mockAssembleTransaction = jest.fn()
@@ -177,11 +202,15 @@ export function resetStellarMocks(): void {
   mockAssembleTransaction.mockReturnValue({
     build: () => ({
       toXDR: () => 'mock-assembled-xdr',
+      sign: mockKeypairSign,
     }),
   })
 
   mockNativeToScVal.mockImplementation((val: unknown) => ({ value: val }))
   mockAddressToScVal.mockReturnValue({ type: 'address' })
+
+  mockKeypairSign.mockReset()
+  mockKeypairFromSecret.mockReset()
 }
 
 // --- Factory functions for domain objects ---
@@ -271,6 +300,8 @@ export {
   mockAddressToScVal,
   mockNativeToScVal,
   mockAssembleTransaction,
+  mockKeypairSign,
+  mockKeypairFromSecret,
 }
 
 export { SorobanRpc, BASE_FEE, Networks }
@@ -278,3 +309,4 @@ export const TransactionBuilder = MockTransactionBuilder
 export const Contract = MockContract
 export const Address = MockAddress
 export const nativeToScVal = mockNativeToScVal
+export const Keypair = MockKeypair

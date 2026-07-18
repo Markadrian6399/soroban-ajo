@@ -454,6 +454,85 @@ export class SorobanService {
     return { success: false, unsignedXdr }
   }
 
+  /**
+   * Triggers `execute_payout` for a group's current cycle.
+   *
+   * Unlike create/join/contribute, `execute_payout` requires no signature
+   * from the recipient or admin — the contract computes the recipient and
+   * transfers from its own escrow balance, so any funded caller can invoke
+   * it once the cycle's conditions are met. The backend submits it using a
+   * dedicated "keeper" key (SOROBAN_KEEPER_SECRET) that only pays network
+   * fees and holds no group funds.
+   *
+   * @param groupId - The on-chain numeric group id (as a string)
+   * @throws {SorobanServiceError} With code KEEPER_NOT_CONFIGURED, SIMULATION_ERROR,
+   *   or TX_FAILED for failures known to have no on-chain effect, or
+   *   SUBMISSION_ERROR/TX_TIMEOUT when the outcome is ambiguous.
+   */
+  async executePayout(groupId: string): Promise<{ txHash: string }> {
+    const keeperSecret = process.env.SOROBAN_KEEPER_SECRET
+    if (!keeperSecret) {
+      throw new SorobanServiceError(
+        'SOROBAN_KEEPER_SECRET is not configured — cannot submit an automated execute_payout call',
+        'KEEPER_NOT_CONFIGURED'
+      )
+    }
+
+    let keeperKeypair: StellarSdk.Keypair
+    try {
+      keeperKeypair = StellarSdk.Keypair.fromSecret(keeperSecret)
+    } catch (error) {
+      throw new SorobanServiceError('SOROBAN_KEEPER_SECRET is not a valid Stellar secret key', 'KEEPER_NOT_CONFIGURED', error)
+    }
+
+    try {
+      const account = await this.server.getAccount(keeperKeypair.publicKey())
+      const args = [StellarSdk.nativeToScVal(BigInt(groupId), { type: 'u64' })]
+
+      const tx = new StellarSdk.TransactionBuilder(account, {
+        fee: StellarSdk.BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(this.contract.call('execute_payout', ...args))
+        .setTimeout(30)
+        .build()
+
+      const simResult = await this.server.simulateTransaction(tx)
+      if (StellarSdk.SorobanRpc.Api.isSimulationError(simResult)) {
+        throw new SorobanServiceError(
+          `Simulation failed for execute_payout: ${simResult.error}`,
+          'SIMULATION_ERROR'
+        )
+      }
+
+      const assembled = StellarSdk.SorobanRpc.assembleTransaction(
+        tx,
+        simResult as StellarSdk.SorobanRpc.Api.SimulateTransactionSuccessResponse
+      ).build()
+
+      assembled.sign(keeperKeypair)
+
+      const sendResponse = await this.server.sendTransaction(assembled)
+      if (sendResponse.status === 'ERROR') {
+        throw new SorobanServiceError(
+          `execute_payout submission rejected: ${sendResponse.errorResult?.toXDR('base64') ?? 'unknown'}`,
+          'SUBMISSION_ERROR'
+        )
+      }
+
+      const confirmed = await pollForConfirmation(this.server, sendResponse.hash)
+      if (confirmed.status === StellarSdk.SorobanRpc.Api.GetTransactionStatus.FAILED) {
+        throw new SorobanServiceError(`execute_payout transaction ${sendResponse.hash} failed on-chain`, 'TX_FAILED')
+      }
+
+      return { txHash: sendResponse.hash }
+    } catch (error) {
+      ErrorReporter.captureException(error as Error, { method: 'executePayout', groupId })
+      if (error instanceof SorobanServiceError) throw error
+      throw new SorobanServiceError('Failed to execute payout', 'SUBMISSION_ERROR', error)
+    }
+  }
+
   // Private helpers
 
   /**
@@ -591,3 +670,5 @@ export class SorobanService {
     }
   }
 }
+
+export const sorobanService = new SorobanService()

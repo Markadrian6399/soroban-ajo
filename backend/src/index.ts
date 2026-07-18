@@ -39,6 +39,10 @@ import { startScheduler, stopScheduler } from './cron/scheduler'
 import { chatService } from './services/chatService'
 import { websocketService } from './services/websocketService'
 import { adminRouter } from './routes/admin'
+import { sagasRouter } from './routes/sagas'
+import { recoverIncompleteSagas } from './sagas/sagaRecovery'
+import './sagas/groupCreationSaga'
+import './sagas/payoutSaga'
 import { versionsRouter } from './routes/versions'
 import { ipBlocklist, ddosProtection } from './middleware/ddosProtection'
 import { requestThrottle } from './middleware/requestThrottle'
@@ -106,6 +110,7 @@ app.use('/api/templates', templatesRouter)
 
 // Admin
 app.use('/api/admin', adminRouter)
+app.use('/api/sagas', sagasRouter)
 
 // Audit logs
 import { auditRouter } from './routes/audit'
@@ -159,6 +164,14 @@ server.listen(PORT, () => {
       error: err instanceof Error ? err.message : String(err),
     })
   }
+
+  // Resume/roll back any saga a previous process left mid-flight — this is
+  // what makes saga state crash-recoverable rather than just in-memory.
+  recoverIncompleteSagas().catch((err) => {
+    logger.error('Saga recovery pass failed at startup', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  })
 })
 
 // Graceful shutdown

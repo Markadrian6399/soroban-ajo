@@ -954,10 +954,41 @@ model Payout {
 
   recipient User @relation("UserPayouts", fields: [recipientId], references: [id])
 
+  /// One payout per group per cycle — lets the payout saga upsert idempotently on crash-recovery retries.
+  @@unique([groupId, cycleNumber])
   @@index([groupId])
   @@index([recipientId])
   @@index([status])
   @@index([transactionHash])
+}
+
+/// Persisted saga state — allows a crashed process to resume or roll back
+/// a distributed transaction (contract call + DB writes + notifications)
+/// on the next process start instead of losing track of it silently.
+model SagaInstance {
+  id     String @id @default(cuid())
+  /// Registry key identifying which saga definition drives this instance (e.g. "group-creation", "payout")
+  name   String
+  /// pending | in_progress | compensating | completed | failed | needs_reconciliation
+  status String @default("pending")
+  /// Index of the step currently executing (forward) or being compensated (reverse)
+  currentStep Int  @default(0)
+  /// Immutable input the saga was started with — replayed against the step definitions on recovery
+  payload     Json
+  /// Mutable data accumulated as steps complete (e.g. on-chain txHash, created row ids) — feeds later steps/compensations
+  context     Json    @default("{}")
+  /// Per-step execution history for observability: [{ name, status, attempts, startedAt, completedAt, error }]
+  stepLog     Json    @default("[]")
+  error       String?
+  /// Bumped every time the orchestrator makes progress; the stuck-saga monitor alerts when this goes stale
+  lastHeartbeat DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  completedAt   DateTime?
+
+  @@index([status])
+  @@index([name, status])
+  @@index([lastHeartbeat])
 }
 
 /// Push notification tokens for mobile/web push

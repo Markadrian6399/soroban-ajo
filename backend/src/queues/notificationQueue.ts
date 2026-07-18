@@ -17,11 +17,14 @@ export type NotificationType =
 // Notification job data types
 export interface NotificationJobData {
   userId: string
-  type: NotificationType
+  // NotificationService.send() intentionally treats `type` as an open
+  // string (see NotificationType in notificationService.ts) so new
+  // notification kinds don't require a queue-layer change.
+  type: string
   title: string
   message: string
   data?: Record<string, any>
-  channels?: Array<'push' | 'email' | 'sms'>
+  channels?: Array<'push' | 'email' | 'sms' | 'websocket'>
   priority?: number
 }
 

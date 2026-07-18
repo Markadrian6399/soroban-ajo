@@ -55,6 +55,7 @@ export const createGroupSchema = z.object({
     .max(100, 'Current members cannot exceed 100'),
   adminPublicKey: stellarPublicKeySchema,
   description: z.string().max(500, 'Description must be 500 characters or less'),
+  signedXdr: z.string().optional(), // For phase 2 of group creation
 })
 
 // POST /api/groups/:id/join - Join group
