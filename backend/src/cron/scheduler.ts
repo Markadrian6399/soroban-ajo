@@ -151,6 +151,15 @@ export function startScheduler(): void {
     })
   )
 
+  // Saga health check — every 5 minutes. Alerts on stuck or
+  // needs-reconciliation saga instances instead of letting them sit silently.
+  scheduledTasks.push(
+    cron.schedule('*/5 * * * *', async () => {
+      const { checkSagaHealth } = await import('../sagas/sagaMonitor')
+      await checkSagaHealth()
+    })
+  )
+
   logger.info(`Cron scheduler started with ${scheduledTasks.length} scheduled tasks`)
 }
 
