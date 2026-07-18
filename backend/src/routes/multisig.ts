@@ -1,64 +1,185 @@
-import { Router, Request, Response } from 'express';
-import { MultiSigService } from '@/services/multiSigService';
-import { PrismaClient } from '@prisma/client';
+import { Router, Request, Response } from 'express'
+import { multiSigService } from '@/services/multisig/MultiSigService'
+import {
+  multiSigConfigSchema,
+  createProposalSchema,
+  signProposalSchema,
+} from '@/types/multisig'
+import { ZodError } from 'zod'
 
-const router = Router();
-const prisma = new PrismaClient();
-const multiSigService = new MultiSigService(prisma);
+const router = Router()
 
-router.post('/proposals', async (req: Request, res: Response) => {
+// Validation middleware
+const validateRequest = (schema: any) => (req: Request, res: Response, next: Function) => {
   try {
-    const { signers, threshold, expiresAt } = req.body;
+    const validated = schema.parse(req.body)
+    ;(req as any).validated = validated
+    next()
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        details: error.errors,
+      })
+    }
+    return res.status(400).json({ error: 'Validation failed' })
+  }
+}
+
+/**
+ * POST /multisig/config
+ * Create a multi-sig configuration for a group
+ */
+router.post('/config', validateRequest(multiSigConfigSchema), async (req: Request, res: Response) => {
+  try {
+    const config = await multiSigService.createMultiSigConfig(req.body)
+    res.status(201).json(config)
+  } catch (error) {
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to create multi-sig config',
+    })
+  }
+})
+
+/**
+ * GET /multisig/config/:groupId
+ * Fetch multi-sig configuration for a group
+ */
+router.get('/config/:groupId', async (req: Request, res: Response) => {
+  try {
+    const config = await multiSigService.getMultiSigConfig(req.params.groupId)
+    if (!config) {
+      return res.status(404).json({ error: 'Multi-sig configuration not found' })
+    }
+    res.json(config)
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to fetch multi-sig config',
+    })
+  }
+})
+
+/**
+ * POST /multisig/proposals
+ * Create a new proposal
+ */
+router.post('/proposals', validateRequest(createProposalSchema), async (req: Request, res: Response) => {
+  try {
+    // Extract proposer from request context (typically from JWT)
+    const proposerId = (req as any).user?.walletAddress || (req.body.proposerId as string)
+
+    if (!proposerId) {
+      return res.status(400).json({
+        error: 'Proposer wallet address not found. Authenticate first or provide proposerId in request.',
+      })
+    }
+
     const proposal = await multiSigService.createProposal(
       req.body.groupId,
-      signers,
-      threshold,
-      Math.ceil((expiresAt - Date.now()) / (60 * 1000))
-    );
-    res.json(proposal);
+      proposerId,
+      req.body.operationType,
+      req.body.transactionXdr,
+      req.body.metadata,
+      req.body.expiresIn
+    )
+    res.status(201).json(proposal)
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to create proposal' });
+    res.status(400).json({
+      error: error instanceof Error ? error.message : 'Failed to create proposal',
+    })
   }
-});
+})
 
+/**
+ * GET /multisig/proposals/:proposalId
+ * Fetch a specific proposal
+ */
 router.get('/proposals/:proposalId', async (req: Request, res: Response) => {
   try {
-    const proposal = await multiSigService.getProposal(req.params.proposalId);
-    if (!proposal) {
-      return res.status(404).json({ error: 'Proposal not found' });
+    const proposal = await multiSigService.getProposal(req.params.proposalId)
+    res.json(proposal)
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      return res.status(404).json({ error: error.message })
     }
-    res.json(proposal);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch proposal' });
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to fetch proposal',
+    })
   }
-});
+})
 
-router.post('/proposals/:proposalId/sign', async (req: Request, res: Response) => {
+/**
+ * POST /multisig/proposals/:proposalId/sign
+ * Sign a proposal with your wallet
+ */
+router.post('/proposals/:proposalId/sign', validateRequest(signProposalSchema), async (req: Request, res: Response) => {
   try {
-    const { signer } = req.body;
-    const proposal = await multiSigService.signProposal(req.params.proposalId, signer);
-    res.json(proposal);
-  } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to sign proposal' });
-  }
-});
+    // Get signer from request context or body
+    const signerWalletAddress = (req as any).user?.walletAddress || req.body.signerWalletAddress
 
+    if (!signerWalletAddress) {
+      return res.status(400).json({
+        error: 'Signer wallet address not found. Authenticate first.',
+      })
+    }
+
+    const result = await multiSigService.signProposal(
+      req.params.proposalId,
+      signerWalletAddress,
+      req.body.signature
+    )
+    res.json(result)
+  } catch (error) {
+    const statusCode = error instanceof Error && error.message.includes('not found') ? 404 : 400
+    res.status(statusCode).json({
+      error: error instanceof Error ? error.message : 'Failed to sign proposal',
+    })
+  }
+})
+
+/**
+ * POST /multisig/proposals/:proposalId/execute
+ * Execute a proposal (after threshold is reached)
+ */
 router.post('/proposals/:proposalId/execute', async (req: Request, res: Response) => {
   try {
-    const success = await multiSigService.executeProposal(req.params.proposalId);
-    res.json({ success });
+    const result = await multiSigService.executeProposal(req.params.proposalId)
+    res.json(result)
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Failed to execute proposal' });
+    const statusCode = error instanceof Error && error.message.includes('not found') ? 404 : 400
+    res.status(statusCode).json({
+      error: error instanceof Error ? error.message : 'Failed to execute proposal',
+    })
   }
-});
+})
 
+/**
+ * GET /multisig/groups/:groupId/proposals
+ * List all proposals for a group with optional status filter
+ */
 router.get('/groups/:groupId/proposals', async (req: Request, res: Response) => {
   try {
-    const proposals = await multiSigService.getGroupProposals(req.params.groupId);
-    res.json(proposals);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch proposals' });
-  }
-});
+    const status = (req.query.status as string) || undefined
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100)
+    const offset = parseInt(req.query.offset as string) || 0
 
-export default router;
+    const proposals = await multiSigService.getGroupProposals(
+      req.params.groupId,
+      status as any,
+      limit,
+      offset
+    )
+    res.json({
+      data: proposals,
+      limit,
+      offset,
+      count: proposals.length,
+    })
+  } catch (error) {
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to fetch proposals',
+    })
+  }
+})
+
+export default router
