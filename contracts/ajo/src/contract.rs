@@ -618,10 +618,86 @@ impl AjoContract {
         let penalty_bonus = storage::get_cycle_penalty_pool(&env, group_id_cached, current_cycle);
         let payout_amount = base_payout + penalty_bonus;
 
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CHECKS-EFFECTS-INTERACTIONS (CEI) ORDERING - SECURITY CRITICAL
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Per Issue #794 security audit: ALL internal state must be updated BEFORE
+        // external calls (token transfers). This prevents reentrancy attacks where a
+        // malicious token callback could observe partial state.
+        //
+        // Order:
+        // 1. EFFECTS: Update all internal state
+        // 2. INTERACTIONS: External calls (token transfers)
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // EFFECTS PHASE: Update all internal state before external calls
+        // ─────────────────────────────────────────────────────────────────────────
+
+        // Mark payout as received in storage
+        storage::mark_payout_received(&env, group_id_cached, &payout_recipient);
+
+        // Advance payout index and update group state
+        group.payout_index += 1;
+
+        // Check if all members have received payout
+        if group.payout_index >= member_count as u32 {
+            // All members have received payout - mark complete
+            group.is_complete = true;
+        } else {
+            // Advance to next cycle
+            group.current_cycle += 1;
+            group.cycle_start_time = utils::get_current_timestamp(&env);
+        }
+
+        // Update storage with new group state (single atomic write)
+        storage::store_group(&env, group_id, &group);
+
+        // Record payout receipt in payment history
+        crate::reputation::record_payment_event(
+            &env,
+            &payout_recipient,
+            group_id_cached,
+            current_cycle,
+            payout_amount,
+            false,
+            true, // is_payout
+        );
+
+        // Check and record group milestones
+        let milestones = utils::check_group_milestones(&env, &group);
+        for milestone in milestones.iter() {
+            let record = MilestoneRecord {
+                group_id: group.id,
+                milestone,
+                achieved_at: utils::get_current_timestamp(&env),
+                cycle_number: current_cycle,
+            };
+            storage::add_group_milestone(&env, group.id, &record);
+        }
+
+        // If group completed, update member stats for all members
+        if group.is_complete {
+            for member in group.members.iter() {
+                let mut stats = storage::get_member_stats(&env, &member)
+                    .unwrap_or_else(|| utils::default_member_stats(&env, &member));
+                stats.total_groups_completed += 1;
+                storage::store_member_stats(&env, &member, &stats);
+                // Update reputation for all members on group completion
+                let _ = crate::reputation::update_member_reputation(&env, &member);
+            }
+        }
+
+        // Update reputation for recipient
+        let _ = crate::reputation::update_member_reputation(&env, &payout_recipient);
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // INTERACTIONS PHASE: External calls (token transfers) happen LAST
+        // ─────────────────────────────────────────────────────────────────────────
+
         // Get contract address for token transfer
         let contract_address = env.current_contract_address();
 
-        // Verify contract has sufficient balance
+        // Verify contract has sufficient balance before external call
         crate::token::check_contract_balance(
             &env,
             &group.token_address,
@@ -629,7 +705,7 @@ impl AjoContract {
             payout_amount,
         )?;
 
-        // Transfer tokens from contract to recipient
+        // Transfer tokens from contract to recipient (EXTERNAL CALL - happens last)
         crate::token::transfer_token(
             &env,
             &group.token_address,
@@ -638,8 +714,9 @@ impl AjoContract {
             payout_amount,
         )?;
 
-        // Mark payout as received
-        storage::mark_payout_received(&env, group_id_cached, &payout_recipient);
+        // ─────────────────────────────────────────────────────────────────────────
+        // EVENTS: Emit events after state updates and external calls
+        // ─────────────────────────────────────────────────────────────────────────
 
         // Emit payout event with penalty information
         if penalty_bonus > 0 {
@@ -647,7 +724,7 @@ impl AjoContract {
                 &env,
                 group_id,
                 &payout_recipient,
-                group.current_cycle,
+                current_cycle,
                 base_payout,
                 penalty_bonus,
             );
@@ -670,59 +747,15 @@ impl AjoContract {
             group.payout_strategy as u32,
         );
 
-        // Advance payout index
-        group.payout_index += 1;
-
-        // Check if all members have received payout
-        if group.payout_index >= member_count as u32 {
-            // All members have received payout - mark complete
-            group.is_complete = true;
-            events::emit_group_completed(&env, group_id_cached);
-        } else {
-            // Advance to next cycle
-            group.current_cycle += 1;
-            group.cycle_start_time = utils::get_current_timestamp(&env);
-        }
-
-        // Update storage (single write)
-        storage::store_group(&env, group_id, &group);
-
-        // Check and record group milestones
-        let milestones = utils::check_group_milestones(&env, &group);
-        for milestone in milestones.iter() {
-            let record = MilestoneRecord {
-                group_id: group.id,
-                milestone,
-                achieved_at: utils::get_current_timestamp(&env),
-                cycle_number: current_cycle,
-            };
-            storage::add_group_milestone(&env, group.id, &record);
-            events::emit_milestone_achieved(&env, group.id, record.milestone as u32, current_cycle);
-        }
-
-        // If group completed, update member stats for all members
+        // Emit completion event if applicable
         if group.is_complete {
-            for member in group.members.iter() {
-                let mut stats = storage::get_member_stats(&env, &member)
-                    .unwrap_or_else(|| utils::default_member_stats(&env, &member));
-                stats.total_groups_completed += 1;
-                storage::store_member_stats(&env, &member, &stats);
-                // Refresh reputation for every member on group completion
-                let _ = crate::reputation::update_member_reputation(&env, &member);
-            }
+            events::emit_group_completed(&env, group_id_cached);
         }
 
-        // Record payout receipt in payment history and refresh recipient reputation
-        crate::reputation::record_payment_event(
-            &env,
-            &payout_recipient,
-            group_id_cached,
-            current_cycle,
-            payout_amount,
-            false,
-            true, // is_payout
-        );
-        let _ = crate::reputation::update_member_reputation(&env, &payout_recipient);
+        // Emit milestone events
+        for milestone in milestones.iter() {
+            events::emit_milestone_achieved(&env, group_id, milestone as u32, current_cycle);
+        }
 
         Ok(())
     }
@@ -1298,23 +1331,29 @@ impl AjoContract {
             return Err(AjoError::RefundNotApproved);
         }
 
-        // Process refunds for all members who contributed
-        let contract_address = env.current_contract_address();
-        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CHECKS-EFFECTS-INTERACTIONS (CEI) ORDERING - SECURITY CRITICAL
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Per Issue #794 security audit: ALL internal state must be updated BEFORE
+        // external calls (token transfers). This prevents reentrancy attacks where a
+        // malicious token callback could observe partial state.
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // EFFECTS PHASE: Update all internal state before token transfers
+        // ─────────────────────────────────────────────────────────────────────────
+
+        // Update request and group state first (before external calls)
+        request.executed = true;
+        request.approved = true;
+        storage::store_refund_request(&env, group_id, &request);
+
+        group.state = crate::types::GroupState::Cancelled;
+        storage::store_group(&env, group_id, &group);
+
+        // Store refund records for all members who contributed
         for member in group.members.iter() {
             if storage::has_contributed(&env, group_id, group.current_cycle, &member) {
                 let refund_amount = group.contribution_amount;
-
-                // Transfer tokens back to member
-                crate::token::transfer_token(
-                    &env,
-                    &group.token_address,
-                    &contract_address,
-                    &member,
-                    refund_amount,
-                )?;
-
-                // Store refund record
                 let refund_record = crate::types::RefundRecord {
                     group_id,
                     member: member.clone(),
@@ -1323,19 +1362,32 @@ impl AjoContract {
                     reason: crate::types::RefundReason::MemberVote,
                 };
                 storage::store_refund_record(&env, group_id, &member, &refund_record);
-
-                // Emit refund event
-                events::emit_refund_processed(&env, group_id, &member, refund_amount, 1);
             }
         }
 
-        // Update request and group state
-        request.executed = true;
-        request.approved = true;
-        storage::store_refund_request(&env, group_id, &request);
+        // ─────────────────────────────────────────────────────────────────────────
+        // INTERACTIONS PHASE: External calls (token transfers) happen LAST
+        // ─────────────────────────────────────────────────────────────────────────
 
-        group.state = crate::types::GroupState::Cancelled;
-        storage::store_group(&env, group_id, &group);
+        let contract_address = env.current_contract_address();
+        
+        for member in group.members.iter() {
+            if storage::has_contributed(&env, group_id, group.current_cycle, &member) {
+                let refund_amount = group.contribution_amount;
+
+                // Transfer tokens back to member (EXTERNAL CALL - happens last)
+                crate::token::transfer_token(
+                    &env,
+                    &group.token_address,
+                    &contract_address,
+                    &member,
+                    refund_amount,
+                )?;
+
+                // Emit refund event after successful transfer
+                events::emit_refund_processed(&env, group_id, &member, refund_amount, 1);
+            }
+        }
 
         Ok(())
     }
@@ -1361,7 +1413,7 @@ impl AjoContract {
     pub fn emergency_refund(env: Env, admin: Address, group_id: u64) -> Result<(), AjoError> {
         admin.require_auth();
 
-        // Verify admin
+        // Verify admin (belt-and-suspenders authorization)
         let stored_admin = storage::get_admin(&env).ok_or(AjoError::Unauthorized)?;
         if admin != stored_admin {
             return Err(AjoError::Unauthorized);
@@ -1375,25 +1427,29 @@ impl AjoContract {
         }
 
         let now = utils::get_current_timestamp(&env);
-        let mut total_refunded = 0i128;
-        let contract_address = env.current_contract_address();
 
-        // Process refunds for all members who contributed
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CHECKS-EFFECTS-INTERACTIONS (CEI) ORDERING - SECURITY CRITICAL
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Per Issue #794 security audit: ALL internal state must be updated BEFORE
+        // external calls (token transfers). This prevents reentrancy attacks where a
+        // malicious token callback could observe partial state.
+
+        // ─────────────────────────────────────────────────────────────────────────
+        // EFFECTS PHASE: Update all internal state before token transfers
+        // ─────────────────────────────────────────────────────────────────────────
+
+        // Update group state first (before external calls)
+        group.state = crate::types::GroupState::Cancelled;
+        storage::store_group(&env, group_id, &group);
+
+        // Store refund records for all members who contributed
+        let mut total_refunded = 0i128;
         for member in group.members.iter() {
             if storage::has_contributed(&env, group_id, group.current_cycle, &member) {
                 let refund_amount = group.contribution_amount;
                 total_refunded += refund_amount;
 
-                // Transfer tokens back to member
-                crate::token::transfer_token(
-                    &env,
-                    &group.token_address,
-                    &contract_address,
-                    &member,
-                    refund_amount,
-                )?;
-
-                // Store refund record
                 let refund_record = crate::types::RefundRecord {
                     group_id,
                     member: member.clone(),
@@ -1402,15 +1458,33 @@ impl AjoContract {
                     reason: crate::types::RefundReason::EmergencyRefund,
                 };
                 storage::store_refund_record(&env, group_id, &member, &refund_record);
-
-                // Emit refund event
-                events::emit_refund_processed(&env, group_id, &member, refund_amount, 2);
             }
         }
 
-        // Update group state
-        group.state = crate::types::GroupState::Cancelled;
-        storage::store_group(&env, group_id, &group);
+        // ─────────────────────────────────────────────────────────────────────────
+        // INTERACTIONS PHASE: External calls (token transfers) happen LAST
+        // ─────────────────────────────────────────────────────────────────────────
+
+        let contract_address = env.current_contract_address();
+
+        // Process token transfers for all members who contributed
+        for member in group.members.iter() {
+            if storage::has_contributed(&env, group_id, group.current_cycle, &member) {
+                let refund_amount = group.contribution_amount;
+
+                // Transfer tokens back to member (EXTERNAL CALL - happens last)
+                crate::token::transfer_token(
+                    &env,
+                    &group.token_address,
+                    &contract_address,
+                    &member,
+                    refund_amount,
+                )?;
+
+                // Emit refund event after successful transfer
+                events::emit_refund_processed(&env, group_id, &member, refund_amount, 2);
+            }
+        }
 
         // Emit emergency refund event
         events::emit_emergency_refund(&env, group_id, &admin, total_refunded);
