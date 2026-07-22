@@ -115,6 +115,10 @@ pub fn deposit_to_pool(env: &Env, token: &Address, amount: i128) {
         balance: 0,
         total_payouts: 0,
         pending_claims_count: 0,
+        max_claimable_bps: MAX_CLAIMABLE_BPS,
+        last_epoch_reset: env.ledger().timestamp(),
+        epoch_claimed_amount: 0,
+        epoch_duration: EPOCH_DURATION,
     });
     pool.balance += amount;
     storage::store_insurance_pool(env, token, &pool);
@@ -132,7 +136,7 @@ pub fn file_claim(
     let claim_id = storage::get_next_claim_id(env);
     let now = env.ledger().timestamp();
 
-    let claim = InsuranceClaim {
+    let mut claim = InsuranceClaim {
         id: claim_id,
         group_id,
         cycle,
@@ -141,16 +145,20 @@ pub fn file_claim(
         amount,
         status: ClaimStatus::Pending,
         created_at: now,
+        fraud_risk_score: 0,
+        auto_verified: false,
+        verification_flags: 0,
     };
 
     // Calculate fraud risk score
     let fraud_risk_score = calculate_fraud_risk_score(env, &claim);
-    
+
     // Reject high-risk claims immediately
     if fraud_risk_score >= HIGH_FRAUD_RISK_THRESHOLD {
         return Err(AjoError::InvalidClaim); // Reuse existing error
     }
 
+    claim.fraud_risk_score = fraud_risk_score;
     storage::store_insurance_claim(env, claim_id, &claim);
 
     // Update pool stats
@@ -159,6 +167,10 @@ pub fn file_claim(
         balance: 0,
         total_payouts: 0,
         pending_claims_count: 0,
+        max_claimable_bps: MAX_CLAIMABLE_BPS,
+        last_epoch_reset: env.ledger().timestamp(),
+        epoch_claimed_amount: 0,
+        epoch_duration: EPOCH_DURATION,
     });
     pool.pending_claims_count += 1;
     storage::store_insurance_pool(env, &group.token_address, &pool);
