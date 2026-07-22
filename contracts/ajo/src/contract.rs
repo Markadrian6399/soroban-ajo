@@ -480,6 +480,13 @@ impl AjoContract {
         stats.total_contributions += 1;
         stats.on_time_contributions += 1;
         stats.total_amount_contributed += contribution_amount;
+        // Only count this contribution toward the credit score if the group
+        // has real stake at risk per cycle (see reputation::MIN_REPUTATION_STAKE).
+        if contribution_amount >= crate::reputation::MIN_REPUTATION_STAKE {
+            stats.qualifying_contributions += 1;
+            stats.qualifying_ontime_contribs += 1;
+            stats.qualifying_amount_contributed += contribution_amount;
+        }
         storage::store_member_stats(&env, &member, &stats);
 
         // Check and record member achievements
@@ -677,10 +684,14 @@ impl AjoContract {
 
         // If group completed, update member stats for all members
         if group.is_complete {
+            let qualifies = group.contribution_amount >= crate::reputation::MIN_REPUTATION_STAKE;
             for member in group.members.iter() {
                 let mut stats = storage::get_member_stats(&env, &member)
                     .unwrap_or_else(|| utils::default_member_stats(&env, &member));
                 stats.total_groups_completed += 1;
+                if qualifies {
+                    stats.qualifying_groups_completed += 1;
+                }
                 storage::store_member_stats(&env, &member, &stats);
                 // Update reputation for all members on group completion
                 let _ = crate::reputation::update_member_reputation(&env, &member);
@@ -2180,6 +2191,11 @@ pub fn get_refund_record(
         stats.total_contributions += 1;
         stats.on_time_contributions += 1;
         stats.total_amount_contributed += required_amount;
+        if required_amount >= crate::reputation::MIN_REPUTATION_STAKE {
+            stats.qualifying_contributions += 1;
+            stats.qualifying_ontime_contribs += 1;
+            stats.qualifying_amount_contributed += required_amount;
+        }
         storage::store_member_stats(&env, &member, &stats);
 
         Ok(())
@@ -2306,10 +2322,14 @@ pub fn get_refund_record(
         }
 
         if group.is_complete {
+            let qualifies = group.contribution_amount >= crate::reputation::MIN_REPUTATION_STAKE;
             for m in group.members.iter() {
                 let mut stats = storage::get_member_stats(&env, &m)
                     .unwrap_or_else(|| utils::default_member_stats(&env, &m));
                 stats.total_groups_completed += 1;
+                if qualifies {
+                    stats.qualifying_groups_completed += 1;
+                }
                 storage::store_member_stats(&env, &m, &stats);
             }
         }
