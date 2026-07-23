@@ -27,6 +27,12 @@ fn setup_test_env() -> (Env, AjoContractClient<'static>, Address, Address, Addre
     let token_admin = Address::generate(&env);
     let token = env.register_stellar_asset_contract(token_admin);
 
+    // Fund every generated member so `contribute()` calls in tests have balance to transfer.
+    let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token);
+    for member in [&creator, &member2, &member3] {
+        token_admin_client.mint(member, &1_000_000_000i128);
+    }
+
     (env, client, creator, member2, member3, token)
 }
 
@@ -287,9 +293,15 @@ fn test_execute_rejected_refund() {
         li.timestamp = li.timestamp + 604_800 + 1;
     });
 
-    // Try to execute refund - should fail
-    let result = client.try_execute_refund(&creator, &group_id);
-    assert_eq!(result, Err(Ok(AjoError::RefundNotApproved)));
+    // A rejected vote is a final outcome, not an error - it succeeds and
+    // records the rejection so a new refund request can be raised later.
+    client.execute_refund(&creator, &group_id);
+    let request = client.get_refund_request(&group_id);
+    assert!(request.executed);
+    assert!(!request.approved);
+
+    let group = client.get_group(&group_id);
+    assert_eq!(group.state, soroban_ajo::GroupState::Active);
 }
 
 #[test]

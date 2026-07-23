@@ -10,7 +10,7 @@
 //! - Integer overflow/underflow safety
 
 use soroban_sdk::{testutils::{Address as _, Ledger}, token, Address, Env, String as SorobanString, Vec as SorobanVec};
-use soroban_ajo::{AjoContract, AjoContractClient, AjoError, DisputeResolution, DisputeType};
+use soroban_ajo::{AjoContract, AjoContractClient, AjoError};
 
 /// Helper to set up test environment with admin, contract, and token
 fn setup_test_env() -> (Env, AjoContractClient<'static>, Address, Address) {
@@ -71,7 +71,7 @@ fn test_reentrancy_execute_payout_state_ordering() {
 
     // Verify payout was marked as received in storage
     let order = client.get_payout_order(&group_id, &1u32);
-    assert_eq!(order.recipient, members[0], "Payout order should record the recipient");
+    assert_eq!(order.recipient, members[0], "Payout should be recorded for the first recipient");
 }
 
 #[test]
@@ -236,10 +236,10 @@ fn test_get_group_disputes_resource_bounded() {
         &members[0],
         &group_id,
         &members[1],
-        &DisputeType::NonPayment,
+        &soroban_ajo::DisputeType::NonPayment,
         &desc,
         &evidence,
-        &DisputeResolution::Penalty,
+        &soroban_ajo::DisputeResolution::Penalty,
     );
 
     // Verify dispute list is retrievable
@@ -279,10 +279,10 @@ fn test_get_group_disputes_lifecycle_bounded() {
         &members[0],
         &group_id,
         &members[1],
-        &DisputeType::NonPayment,
+        &soroban_ajo::DisputeType::NonPayment,
         &desc,
         &evidence,
-        &DisputeResolution::NoAction,
+        &soroban_ajo::DisputeResolution::Penalty,
     );
     assert_eq!(result, Err(Ok(AjoError::GroupComplete)), "Cannot file dispute on completed group");
 }
@@ -356,13 +356,13 @@ fn test_voting_period_consistent_across_calls() {
     let evidence = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
     
     let dispute_id_1 = client.file_dispute(
-        &members[0], &group_id, &members[1], &DisputeType::NonPayment, &desc, &evidence, &DisputeResolution::NoAction
+        &members[0], &group_id, &members[1], &soroban_ajo::DisputeType::NonPayment, &desc, &evidence, &soroban_ajo::DisputeResolution::Penalty
     );
 
     env.ledger().with_mut(|li| { li.timestamp += 100; }); // Advance 100 seconds
 
     let dispute_id_2 = client.file_dispute(
-        &members[1], &group_id, &members[2], &DisputeType::NonPayment, &desc, &evidence, &DisputeResolution::NoAction
+        &members[1], &group_id, &members[2], &soroban_ajo::DisputeType::NonPayment, &desc, &evidence, &soroban_ajo::DisputeResolution::Penalty
     );
 
     // Both disputes should exist with consistent voting periods
@@ -422,7 +422,7 @@ fn test_cannot_vote_twice_dispute() {
     let desc = SorobanString::from_str(&env, "Test");
     let evidence = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
     let dispute_id = client.file_dispute(
-        &members[0], &group_id, &members[1], &DisputeType::NonPayment, &desc, &evidence, &DisputeResolution::NoAction
+        &members[0], &group_id, &members[1], &soroban_ajo::DisputeType::NonPayment, &desc, &evidence, &soroban_ajo::DisputeResolution::Penalty
     );
 
     // First vote succeeds
@@ -430,7 +430,7 @@ fn test_cannot_vote_twice_dispute() {
 
     // Second vote should fail
     let result = client.try_vote_on_dispute(&members[0], &dispute_id, &false);
-    assert_eq!(result, Err(Ok(AjoError::AlreadyVoted)), "Cannot vote twice on same dispute");
+    assert_eq!(result, Err(Ok(AjoError::AlreadyVotedOnDispute)), "Cannot vote twice on same dispute");
 }
 
 // ============================================================================
@@ -460,7 +460,7 @@ fn test_penalty_calculation_no_overflow() {
     let evidence = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
     
     let dispute_id = client.file_dispute(
-        &members[0], &group_id, &members[1], &DisputeType::NonPayment, &desc, &evidence, &DisputeResolution::Penalty
+        &members[0], &group_id, &members[1], &soroban_ajo::DisputeType::NonPayment, &desc, &evidence, &soroban_ajo::DisputeResolution::Penalty
     );
 
     // Vote to approve penalty
@@ -508,9 +508,8 @@ fn test_payout_calculation_no_overflow() {
     // Tests: contribution_amount * member_count (max 100)
     
     let (env, client, _admin, token) = setup_test_env();
-    // 100 members x (join + mint + contribute) exceeds the default
-    // per-invocation test budget, which models a single transaction's real
-    // resource limits; this test intentionally exercises many calls at once.
+    // 100 members contributing in one Env is more sequential invocations than
+    // the default single-transaction resource budget allows.
     env.budget().reset_unlimited();
     let members = generate_addresses(&env, 100);
 
@@ -575,7 +574,7 @@ fn test_payout_with_penalty_bonus_no_overflow() {
     let evidence = soroban_sdk::BytesN::from_array(&env, &[0u8; 32]);
     
     let dispute_id = client.file_dispute(
-        &members[0], &group_id, &members[1], &DisputeType::NonPayment, &desc, &evidence, &DisputeResolution::Penalty
+        &members[0], &group_id, &members[1], &soroban_ajo::DisputeType::NonPayment, &desc, &evidence, &soroban_ajo::DisputeResolution::Penalty
     );
 
     // Vote to approve penalty
@@ -585,16 +584,6 @@ fn test_payout_with_penalty_bonus_no_overflow() {
 
     env.ledger().with_mut(|li| { li.timestamp += 604_800 + 1; });
     client.resolve_dispute(&members[0], &dispute_id);
-
-    // Dispute-based Penalty resolution records a pool addition without
-    // actually collecting tokens from the defendant (there's no way to force
-    // an unauthorized party's transfer in a single-signer flow), so the
-    // contract doesn't actually hold the phantom penalty amount. Since this
-    // test's purpose is verifying base_payout + penalty_bonus arithmetic
-    // doesn't overflow (not exercising real fund custody), top up the
-    // contract's balance by the recorded penalty so the payout can proceed.
-    let penalty_amount = contribution * 10 / 100;
-    tc.mint(&client.address, &penalty_amount);
 
     // Now execute payout with accumulated penalties
     env.ledger().with_mut(|li| { li.timestamp += 604_800 + 86400 + 1; });

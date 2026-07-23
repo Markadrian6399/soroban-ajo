@@ -410,12 +410,13 @@ fn test_payout_insufficient_contract_balance() {
     // Join group
     client.join_group(&member2, &group_id);
 
-    // Both members contribute so the payout gets past the completeness check
+    // Both members contribute so `execute_payout` gets past the
+    // all-contributed check and reaches the balance-dependent transfer.
     client.contribute(&creator, &group_id);
     client.contribute(&member2, &group_id);
 
-    // Manually drain contract balance so the payout fails on the balance
-    // check instead, exercising InsufficientContractBalance.
+    // Drain the contract's balance out from under it so the payout transfer
+    // itself fails with InsufficientContractBalance.
     let contract_address = client.address.clone();
     let contract_balance = token_client.balance(&contract_address);
     token_client.transfer(&contract_address, &creator, &contract_balance);

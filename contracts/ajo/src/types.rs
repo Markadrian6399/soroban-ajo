@@ -266,14 +266,11 @@ pub struct Dispute {
     pub votes_for_action: u32,
     pub votes_against_action: u32,
     pub proposed_resolution: DisputeResolution,
-    /// The resolution actually applied once the dispute leaves `Open`/`Voting`.
-    /// Uses `NoAction` as the "not yet resolved" sentinel rather than
-    /// `Option<DisputeResolution>`: soroban-sdk 21.7.7's `#[contracttype]`
-    /// codegen for fieldless enums only emits `TryInto<ScVal>`, not the
-    /// infallible `Into<ScVal>` that `Option<T>`'s blanket XDR conversion
-    /// requires (see the `// TODO: Add conversions to/from ScVal types`
-    /// left in `derive_enum_int.rs`), so `Option<DisputeResolution>` cannot
-    /// compile against this SDK version at all.
+    /// Resolution actually applied once the dispute leaves `Open`/`Voting`.
+    /// Defaults to `NoAction` while the dispute is still unresolved - Soroban's
+    /// `#[contracttype]` int-enum representation can't be wrapped in `Option<T>`
+    /// (no `Into<ScVal>` impl for the `Option` blanket), so `NoAction` doubles
+    /// as the "not yet resolved" sentinel instead.
     pub final_resolution: DisputeResolution,
 }
 
@@ -931,99 +928,3 @@ pub const MAX_SCORE_HISTORY: u32 = 50;
 
 /// Maximum number of payment history entries retained per member.
 pub const MAX_PAYMENT_HISTORY: u32 = 100;
-
-// ── Loan requests ────────────────────────────────────────────────────────
-
-#[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum LoanStatus {
-    Pending = 0,
-    Approved = 1,
-    Active = 2,
-    Repaid = 3,
-}
-
-/// A member-requested loan drawn from the group's contribution pool,
-/// approved by member vote, disbursed, and repaid with interest.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LoanRequest {
-    pub id: u64,
-    pub group_id: u64,
-    pub borrower: Address,
-    pub amount: i128,
-    pub interest_rate_bps: u32,
-    pub repayment_period: u64,
-    pub status: LoanStatus,
-    pub votes_for: u32,
-    pub votes_against: u32,
-    pub voting_deadline: u64,
-    pub created_at: u64,
-    pub disbursed_at: u64,
-    pub amount_repaid: i128,
-    pub due_at: u64,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct LoanVote {
-    pub loan_id: u64,
-    pub voter: Address,
-    pub in_favor: bool,
-    pub timestamp: u64,
-}
-
-/// Percentage of votes-for (of total group members) required to approve a loan.
-pub const LOAN_APPROVAL_THRESHOLD: u32 = 51;
-/// Loan-vote window: 3 days.
-pub const LOAN_VOTING_PERIOD: u64 = 259_200;
-
-// ── Emergency fund requests ─────────────────────────────────────────────
-
-#[contracttype]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum EmergencyStatus {
-    Pending = 0,
-    Approved = 1,
-    Disbursed = 2,
-    Repaid = 3,
-}
-
-/// A member-requested emergency withdrawal from the group's contribution
-/// pool, approved by member vote, disbursed, and repaid over time.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EmergencyRequest {
-    pub id: u64,
-    pub group_id: u64,
-    pub requester: Address,
-    pub amount: i128,
-    pub reason: soroban_sdk::String,
-    pub status: EmergencyStatus,
-    pub votes_for: u32,
-    pub votes_against: u32,
-    pub voting_deadline: u64,
-    pub created_at: u64,
-    pub disbursed_at: u64,
-    pub amount_repaid: i128,
-    pub repay_by: u64,
-}
-
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EmergencyVote {
-    pub request_id: u64,
-    pub voter: Address,
-    pub in_favor: bool,
-    pub timestamp: u64,
-}
-
-/// Percentage of votes-for (of total group members) required to approve an
-/// emergency request. Same threshold as loans — both are majority-vote,
-/// unlike disputes ([`DISPUTE_APPROVAL_THRESHOLD`]) which need a supermajority.
-pub const EMERGENCY_APPROVAL_THRESHOLD: u32 = 51;
-/// Emergency-vote window: 1 day (shorter than [`LOAN_VOTING_PERIOD`] since
-/// emergency requests are time-sensitive by definition).
-pub const EMERGENCY_VOTING_PERIOD: u64 = 86_400;

@@ -34,50 +34,41 @@ fn generate_addresses(env: &Env, count: usize) -> Vec<Address> {
 // Access Control Tests
 // ============================================================================
 
-// `pause`/`unpause`/`upgrade` take no caller argument: they authorize the
-// call purely via `admin.require_auth()` against the one stored admin
-// address, so there is no Rust-level "wrong caller" branch that returns an
-// `AjoError` — an unauthorized call fails at the host auth layer instead.
-// `setup_test_env()`'s blanket `mock_all_auths()` would make every caller
-// trivially "authorized", so these tests disable mocking with `set_auths(&[])`
-// to genuinely simulate no valid signature being provided, and assert the
-// call fails rather than pinning an unreachable AjoError variant.
-
 #[test]
 fn test_security_unauthorized_pause() {
     let (env, client, _admin, _token) = setup_test_env();
+    let attacker = Address::generate(&env);
 
-    // No valid authorization provided for the admin's pause action.
-    env.set_auths(&[]);
-    let result = client.try_pause();
-    assert!(result.is_err(), "Pausing without admin authorization should fail");
+    // Attacker tries to pause without being admin
+    let result = client.try_pause(&attacker);
+    assert_eq!(result, Err(Ok(AjoError::Unauthorized)));
 }
 
 #[test]
 fn test_security_unauthorized_unpause() {
-    let (env, client, _admin, _token) = setup_test_env();
+    let (env, client, admin, _token) = setup_test_env();
 
-    // Admin pauses (still under mock_all_auths).
-    client.pause();
+    // Admin pauses
+    client.pause(&admin);
 
-    // No valid authorization provided for the admin's unpause action.
-    env.set_auths(&[]);
-    let result = client.try_unpause();
-    assert!(result.is_err(), "Unpausing without admin authorization should fail");
+    // Attacker tries to unpause
+    let attacker = Address::generate(&env);
+    let result = client.try_unpause(&attacker);
+    assert_eq!(result, Err(Ok(AjoError::Unauthorized)));
 }
 
 #[test]
 fn test_security_unauthorized_upgrade() {
     let (env, client, _admin, _token) = setup_test_env();
-
+    let attacker = Address::generate(&env);
+    
     // Create fake wasm hash
     let fake_wasm = [0u8; 32];
     let wasm_hash = soroban_sdk::BytesN::from_array(&env, &fake_wasm);
-
-    // No valid authorization provided for the admin's upgrade action.
-    env.set_auths(&[]);
-    let result = client.try_upgrade(&wasm_hash, &1u32);
-    assert!(result.is_err(), "Upgrading without admin authorization should fail");
+    
+    // Attacker tries to upgrade
+    let result = client.try_upgrade(&attacker, &wasm_hash, &1u32);
+    assert_eq!(result, Err(Ok(AjoError::Unauthorized)));
 }
 
 #[test]
@@ -329,9 +320,8 @@ fn test_security_join_full_group() {
 #[test]
 fn test_security_large_group_operations() {
     let (env, client, _admin, token) = setup_test_env();
-    // 50 members x (join + mint + contribute) exceeds the default per-invocation
-    // test budget, which models a single transaction's real resource limits;
-    // this test intentionally exercises many calls in one host instance.
+    // 50 members joining/contributing in one Env is more sequential invocations
+    // than the default single-transaction resource budget allows.
     env.budget().reset_unlimited();
     let members = generate_addresses(&env, 50);
 
@@ -364,11 +354,11 @@ fn test_security_large_group_operations() {
 
 #[test]
 fn test_security_pause_blocks_create_group() {
-    let (env, client, _admin, token) = setup_test_env();
+    let (env, client, admin, token) = setup_test_env();
     let creator = Address::generate(&env);
 
     // Pause contract
-    client.pause();
+    client.pause(&admin);
 
     // Try to create group
     let result = client.try_create_group(&creator, &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
@@ -377,14 +367,14 @@ fn test_security_pause_blocks_create_group() {
 
 #[test]
 fn test_security_pause_blocks_join_group() {
-    let (env, client, _admin, token) = setup_test_env();
+    let (env, client, admin, token) = setup_test_env();
     let members = generate_addresses(&env, 2);
 
     // Create group before pause
     let group_id = client.create_group(&members[0], &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
 
     // Pause contract
-    client.pause();
+    client.pause(&admin);
 
     // Try to join
     let result = client.try_join_group(&members[1], &group_id);
@@ -393,14 +383,14 @@ fn test_security_pause_blocks_join_group() {
 
 #[test]
 fn test_security_pause_blocks_contribute() {
-    let (env, client, _admin, token) = setup_test_env();
+    let (env, client, admin, token) = setup_test_env();
     let creator = Address::generate(&env);
 
     // Create group before pause
     let group_id = client.create_group(&creator, &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
 
     // Pause contract
-    client.pause();
+    client.pause(&admin);
 
     // Try to contribute (ContractPaused checked before token transfer)
     let result = client.try_contribute(&creator, &group_id);
@@ -409,7 +399,7 @@ fn test_security_pause_blocks_contribute() {
 
 #[test]
 fn test_security_pause_blocks_payout() {
-    let (env, client, _admin, token) = setup_test_env();
+    let (env, client, admin, token) = setup_test_env();
     let members = generate_addresses(&env, 2);
 
     let group_id = client.create_group(&members[0], &token, &100_000_000i128, &604_800u64, &2u32, &86400u64, &5u32, &0u32);
@@ -423,7 +413,7 @@ fn test_security_pause_blocks_payout() {
     client.contribute(&members[1], &group_id);
 
     // Pause contract
-    client.pause();
+    client.pause(&admin);
 
     // Try to execute payout (ContractPaused checked first)
     let result = client.try_execute_payout(&group_id);
@@ -432,14 +422,14 @@ fn test_security_pause_blocks_payout() {
 
 #[test]
 fn test_security_pause_allows_queries() {
-    let (env, client, _admin, token) = setup_test_env();
+    let (env, client, admin, token) = setup_test_env();
     let creator = Address::generate(&env);
 
     // Create group before pause
     let group_id = client.create_group(&creator, &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
 
     // Pause contract
-    client.pause();
+    client.pause(&admin);
     
     // Queries should still work
     let group = client.get_group(&group_id);
@@ -454,20 +444,20 @@ fn test_security_pause_allows_queries() {
 
 #[test]
 fn test_security_unpause_restores_functionality() {
-    let (env, client, _admin, token) = setup_test_env();
+    let (env, client, admin, token) = setup_test_env();
     let members = generate_addresses(&env, 2);
 
     let group_id = client.create_group(&members[0], &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
 
     // Pause
-    client.pause();
+    client.pause(&admin);
     
     // Verify paused
     let result = client.try_join_group(&members[1], &group_id);
     assert_eq!(result, Err(Ok(AjoError::ContractPaused)));
     
     // Unpause
-    client.unpause();
+    client.unpause(&admin);
     
     // Should work now
     client.join_group(&members[1], &group_id);
@@ -529,18 +519,14 @@ fn test_security_metadata_unauthorized_update() {
 
     let group_id = client.create_group(&members[0], &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
     client.join_group(&members[1], &group_id);
-
-    // set_group_metadata takes no caller argument: it authorizes purely via
-    // `group.creator.require_auth()`, so an unauthorized call fails at the
-    // host auth layer, not via a graceful AjoError. Disable the blanket
-    // mock_all_auths() so no valid authorization is provided for that call.
+    
+    // Non-creator tries to set metadata
     let name = soroban_sdk::String::from_str(&env, "Test Group");
     let desc = soroban_sdk::String::from_str(&env, "Description");
     let rules = soroban_sdk::String::from_str(&env, "Rules");
-
-    env.set_auths(&[]);
-    let result = client.try_set_group_metadata(&group_id, &name, &desc, &rules);
-    assert!(result.is_err(), "Setting metadata without the creator's authorization should fail");
+    
+    let result = client.try_set_group_metadata(&members[1], &group_id, &name, &desc, &rules);
+    assert_eq!(result, Err(Ok(AjoError::Unauthorized)));
 }
 
 // ============================================================================

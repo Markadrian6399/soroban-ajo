@@ -105,8 +105,8 @@ fn test_dust_self_dealing_group_does_not_inflate_score() {
 #[test]
 fn test_ten_dust_groups_still_yield_zero_score() {
     let (env, client, creator, member2, token) = setup_test_env();
-    // 10 full group lifecycles in one host instance exceeds the default
-    // per-invocation test budget, which models a single transaction.
+    // 10 full group lifecycles in one Env is more sequential invocations than
+    // the default single-transaction resource budget allows.
     env.budget().reset_unlimited();
     mint_tokens(&env, &token, &[creator.clone(), member2.clone()], 10_000i128);
 
