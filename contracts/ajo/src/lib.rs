@@ -40,3 +40,6 @@ pub use types::{GroupTemplate, TemplateConfig};
 pub use types::{
     ReputationScore, ReputationTier, CreditScoreSnapshot, PaymentHistoryEntry, ScoreChangeReason,
 };
+pub use types::{ClaimStatus, InsuranceClaim, InsurancePool};
+pub use types::{LoanRequest, LoanStatus, LoanVote};
+pub use types::{EmergencyRequest, EmergencyStatus, EmergencyVote};

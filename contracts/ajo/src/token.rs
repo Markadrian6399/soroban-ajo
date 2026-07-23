@@ -15,7 +15,6 @@ use crate::errors::AjoError;
 /// `Ok(())` on successful transfer
 ///
 /// # Errors
-/// * `TransferFailed` - If the token transfer fails
 pub fn transfer_token(
     env: &Env,
     token_address: &Address,

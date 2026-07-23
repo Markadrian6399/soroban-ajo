@@ -64,10 +64,10 @@ pub fn vote_on_loan(
 ) -> Result<(), AjoError> {
     voter.require_auth();
 
-    let mut loan = storage::get_loan(env, loan_id).ok_or(AjoError::LoanNotFound)?;
+    let mut loan = storage::get_loan(env, loan_id).ok_or(AjoError::RequestNotFound)?;
 
     if loan.status != LoanStatus::Pending {
-        return Err(AjoError::LoanAlreadyProcessed);
+        return Err(AjoError::RequestAlreadyProcessed);
     }
 
     let now = utils::get_current_timestamp(env);
@@ -108,10 +108,10 @@ pub fn vote_on_loan(
 
 /// Disburse an approved loan to the borrower.
 pub fn disburse_loan(env: &Env, loan_id: u64) -> Result<(), AjoError> {
-    let mut loan = storage::get_loan(env, loan_id).ok_or(AjoError::LoanNotFound)?;
+    let mut loan = storage::get_loan(env, loan_id).ok_or(AjoError::RequestNotFound)?;
 
     if loan.status != LoanStatus::Approved {
-        return Err(AjoError::LoanAlreadyProcessed);
+        return Err(AjoError::RequestAlreadyProcessed);
     }
 
     let now = utils::get_current_timestamp(env);
@@ -144,10 +144,10 @@ pub fn repay_loan(
 ) -> Result<(), AjoError> {
     borrower.require_auth();
 
-    let mut loan = storage::get_loan(env, loan_id).ok_or(AjoError::LoanNotFound)?;
+    let mut loan = storage::get_loan(env, loan_id).ok_or(AjoError::RequestNotFound)?;
 
     if loan.status != LoanStatus::Active {
-        return Err(AjoError::LoanNotActive);
+        return Err(AjoError::RequestNotActive);
     }
 
     let group = storage::get_group(env, loan.group_id).ok_or(AjoError::GroupNotFound)?;
@@ -182,7 +182,7 @@ pub fn repay_loan(
 
 /// Get a loan request by ID.
 pub fn get_loan(env: &Env, loan_id: u64) -> Result<LoanRequest, AjoError> {
-    storage::get_loan(env, loan_id).ok_or(AjoError::LoanNotFound)
+    storage::get_loan(env, loan_id).ok_or(AjoError::RequestNotFound)
 }
 
 /// Get all loan IDs for a group.

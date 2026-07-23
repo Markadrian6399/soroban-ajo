@@ -329,3 +329,55 @@ pub fn emit_fraud_detection_alert(env: &Env, claim_id: u64, member: &Address, fr
     let topics = (symbol_short!("fraudalt"), claim_id);
     env.events().publish(topics, (member, fraud_type, risk_score));
 }
+
+// ── Loan events ──────────────────────────────────────────────────────────
+
+/// Emit an event when a loan is requested.
+pub fn emit_loan_requested(env: &Env, loan_id: u64, group_id: u64, borrower: &Address, amount: i128) {
+    let topics = (symbol_short!("loanreq"), loan_id);
+    env.events().publish(topics, (group_id, borrower, amount));
+}
+
+/// Emit an event when a vote is cast on a loan request.
+pub fn emit_loan_vote(env: &Env, loan_id: u64, voter: &Address, in_favor: bool) {
+    let topics = (symbol_short!("loanvote"), loan_id);
+    env.events().publish(topics, (voter, in_favor));
+}
+
+/// Emit an event when an approved loan is disbursed.
+pub fn emit_loan_disbursed(env: &Env, loan_id: u64, group_id: u64, borrower: &Address, amount: i128) {
+    let topics = (symbol_short!("loandisb"), loan_id);
+    env.events().publish(topics, (group_id, borrower, amount));
+}
+
+/// Emit an event when a loan repayment is made.
+pub fn emit_loan_repayment(env: &Env, loan_id: u64, borrower: &Address, amount: i128) {
+    let topics = (symbol_short!("loanrepy"), loan_id);
+    env.events().publish(topics, (borrower, amount));
+}
+
+// ── Emergency fund events ───────────────────────────────────────────────
+
+/// Emit an event when an emergency withdrawal is requested.
+pub fn emit_emergency_requested(env: &Env, request_id: u64, group_id: u64, requester: &Address, amount: i128) {
+    let topics = (symbol_short!("emreq"), request_id);
+    env.events().publish(topics, (group_id, requester, amount));
+}
+
+/// Emit an event when a vote is cast on an emergency request.
+pub fn emit_emergency_vote(env: &Env, request_id: u64, voter: &Address, in_favor: bool) {
+    let topics = (symbol_short!("emvote"), request_id);
+    env.events().publish(topics, (voter, in_favor));
+}
+
+/// Emit an event when an approved emergency request is disbursed.
+pub fn emit_emergency_disbursed(env: &Env, request_id: u64, group_id: u64, requester: &Address, amount: i128) {
+    let topics = (symbol_short!("emdisb"), request_id);
+    env.events().publish(topics, (group_id, requester, amount));
+}
+
+/// Emit an event when an emergency withdrawal repayment is made.
+pub fn emit_emergency_repayment(env: &Env, request_id: u64, requester: &Address, amount: i128) {
+    let topics = (symbol_short!("emrepay"), request_id);
+    env.events().publish(topics, (requester, amount));
+}

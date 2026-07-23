@@ -34,41 +34,50 @@ fn generate_addresses(env: &Env, count: usize) -> Vec<Address> {
 // Access Control Tests
 // ============================================================================
 
+// `pause`/`unpause`/`upgrade` take no caller argument: they authorize the
+// call purely via `admin.require_auth()` against the one stored admin
+// address, so there is no Rust-level "wrong caller" branch that returns an
+// `AjoError` — an unauthorized call fails at the host auth layer instead.
+// `setup_test_env()`'s blanket `mock_all_auths()` would make every caller
+// trivially "authorized", so these tests disable mocking with `set_auths(&[])`
+// to genuinely simulate no valid signature being provided, and assert the
+// call fails rather than pinning an unreachable AjoError variant.
+
 #[test]
 fn test_security_unauthorized_pause() {
     let (env, client, _admin, _token) = setup_test_env();
-    let attacker = Address::generate(&env);
-    
-    // Attacker tries to pause without being admin
+
+    // No valid authorization provided for the admin's pause action.
+    env.set_auths(&[]);
     let result = client.try_pause();
-    assert_eq!(result, Err(Ok(AjoError::UnauthorizedPause)));
+    assert!(result.is_err(), "Pausing without admin authorization should fail");
 }
 
 #[test]
 fn test_security_unauthorized_unpause() {
-    let (env, client, admin, _token) = setup_test_env();
-    
-    // Admin pauses
+    let (env, client, _admin, _token) = setup_test_env();
+
+    // Admin pauses (still under mock_all_auths).
     client.pause();
-    
-    // Attacker tries to unpause
-    let attacker = Address::generate(&env);
+
+    // No valid authorization provided for the admin's unpause action.
+    env.set_auths(&[]);
     let result = client.try_unpause();
-    assert_eq!(result, Err(Ok(AjoError::UnauthorizedUnpause)));
+    assert!(result.is_err(), "Unpausing without admin authorization should fail");
 }
 
 #[test]
 fn test_security_unauthorized_upgrade() {
     let (env, client, _admin, _token) = setup_test_env();
-    let attacker = Address::generate(&env);
-    
+
     // Create fake wasm hash
     let fake_wasm = [0u8; 32];
     let wasm_hash = soroban_sdk::BytesN::from_array(&env, &fake_wasm);
-    
-    // Attacker tries to upgrade
+
+    // No valid authorization provided for the admin's upgrade action.
+    env.set_auths(&[]);
     let result = client.try_upgrade(&wasm_hash, &1u32);
-    assert_eq!(result, Err(Ok(AjoError::Unauthorized)));
+    assert!(result.is_err(), "Upgrading without admin authorization should fail");
 }
 
 #[test]
@@ -320,6 +329,10 @@ fn test_security_join_full_group() {
 #[test]
 fn test_security_large_group_operations() {
     let (env, client, _admin, token) = setup_test_env();
+    // 50 members x (join + mint + contribute) exceeds the default per-invocation
+    // test budget, which models a single transaction's real resource limits;
+    // this test intentionally exercises many calls in one host instance.
+    env.budget().reset_unlimited();
     let members = generate_addresses(&env, 50);
 
     // Create group with 50 members
@@ -516,14 +529,18 @@ fn test_security_metadata_unauthorized_update() {
 
     let group_id = client.create_group(&members[0], &token, &100_000_000i128, &604_800u64, &5u32, &86400u64, &5u32, &0u32);
     client.join_group(&members[1], &group_id);
-    
-    // Non-creator tries to set metadata
+
+    // set_group_metadata takes no caller argument: it authorizes purely via
+    // `group.creator.require_auth()`, so an unauthorized call fails at the
+    // host auth layer, not via a graceful AjoError. Disable the blanket
+    // mock_all_auths() so no valid authorization is provided for that call.
     let name = soroban_sdk::String::from_str(&env, "Test Group");
     let desc = soroban_sdk::String::from_str(&env, "Description");
     let rules = soroban_sdk::String::from_str(&env, "Rules");
-    
+
+    env.set_auths(&[]);
     let result = client.try_set_group_metadata(&group_id, &name, &desc, &rules);
-    assert_eq!(result, Err(Ok(AjoError::Unauthorized)));
+    assert!(result.is_err(), "Setting metadata without the creator's authorization should fail");
 }
 
 // ============================================================================

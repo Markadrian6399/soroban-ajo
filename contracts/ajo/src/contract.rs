@@ -403,7 +403,6 @@ impl AjoContract {
     /// * `GroupComplete` - If the group has completed all cycles
     /// * `GracePeriodExpired` - If contribution is too late (after grace period)
     /// * `InsufficientBalance` - If member doesn't have enough tokens
-    /// * `TransferFailed` - If the token transfer fails
     pub fn contribute(env: Env, member: Address, group_id: u64) -> Result<(), AjoError> {
         // Check if paused
         pausable::ensure_not_paused(&env)?;
@@ -439,25 +438,84 @@ impl AjoContract {
             return Err(AjoError::AlreadyContributed);
         }
 
+        // Determine lateness relative to the cycle window. Contributions
+        // after the grace period are rejected outright; contributions after
+        // cycle end but within the grace period are accepted but incur a
+        // penalty_rate% surcharge, which is pooled and paid out on top of
+        // the base payout (see execute_payout's penalty_bonus handling).
+        let now = utils::get_current_timestamp(&env);
+        let cycle_end = group.cycle_start_time + group.cycle_duration;
+        let grace_end = utils::get_grace_period_end(&group);
+        if now > grace_end {
+            return Err(AjoError::GracePeriodExpired);
+        }
+        let is_late = now > cycle_end;
+        let penalty_amount = if is_late {
+            contribution_amount * (group.penalty_rate as i128) / 100
+        } else {
+            0
+        };
+        let total_due = contribution_amount + penalty_amount;
+
         // Get contract address for token transfer
         let contract_address = env.current_contract_address();
 
         // Check member balance before transfer
-        crate::token::check_balance(&env, &group.token_address, &member, contribution_amount)?;
+        crate::token::check_balance(&env, &group.token_address, &member, total_due)?;
 
-        // Transfer tokens from member to contract
+        // Transfer tokens from member to contract (contribution + any late penalty)
         crate::token::transfer_token(
             &env,
             &group.token_address,
             &member,
             &contract_address,
-            contribution_amount,
+            total_due,
         )?;
 
         // Record contribution
         storage::store_contribution(&env, group_id_cached, current_cycle, &member, true);
 
-        // Insurance logic: Deduct premium if enabled
+        // Record the detailed per-cycle contribution record (timing + penalty)
+        let contribution_detail = crate::types::ContributionRecord {
+            group_id: group_id_cached,
+            cycle: current_cycle,
+            member: member.clone(),
+            amount: contribution_amount,
+            timestamp: now,
+            is_late,
+            penalty_amount,
+        };
+        storage::store_contribution_detail(&env, group_id_cached, current_cycle, &member, &contribution_detail);
+
+        // Update the member's per-group penalty record and the cycle's penalty pool
+        let mut penalty_record = storage::get_member_penalty(&env, group_id_cached, &member)
+            .unwrap_or(crate::types::MemberPenaltyRecord {
+                member: member.clone(),
+                group_id: group_id_cached,
+                late_count: 0,
+                on_time_count: 0,
+                total_penalties: 0,
+                reliability_score: 100,
+            });
+        if is_late {
+            penalty_record.late_count += 1;
+            penalty_record.total_penalties += penalty_amount;
+
+            let pool = storage::get_cycle_penalty_pool(&env, group_id_cached, current_cycle);
+            storage::store_cycle_penalty_pool(&env, group_id_cached, current_cycle, pool + penalty_amount);
+        } else {
+            penalty_record.on_time_count += 1;
+        }
+        let total_contributions_recorded = penalty_record.late_count + penalty_record.on_time_count;
+        penalty_record.reliability_score = if total_contributions_recorded > 0 {
+            (penalty_record.on_time_count * 100) / total_contributions_recorded
+        } else {
+            100
+        };
+        storage::store_member_penalty(&env, group_id_cached, &member, &penalty_record);
+
+        // Insurance logic: Deduct premium if enabled (based on the base
+        // contribution only — the late penalty is not insurable premium).
         if group.insurance_config.is_enabled {
             let premium = crate::insurance::calculate_premium(contribution_amount, group.insurance_config.rate_bps);
             if premium > 0 {
@@ -478,14 +536,19 @@ impl AjoContract {
         let mut stats = storage::get_member_stats(&env, &member)
             .unwrap_or_else(|| utils::default_member_stats(&env, &member));
         stats.total_contributions += 1;
-        stats.on_time_contributions += 1;
         stats.total_amount_contributed += contribution_amount;
         // Only count this contribution toward the credit score if the group
         // has real stake at risk per cycle (see reputation::MIN_REPUTATION_STAKE).
-        if contribution_amount >= crate::reputation::MIN_REPUTATION_STAKE {
+        let qualifies_for_reputation = contribution_amount >= crate::reputation::MIN_REPUTATION_STAKE;
+        if qualifies_for_reputation {
             stats.qualifying_contributions += 1;
-            stats.qualifying_ontime_contribs += 1;
             stats.qualifying_amount_contributed += contribution_amount;
+        }
+        if !is_late {
+            stats.on_time_contributions += 1;
+            if qualifies_for_reputation {
+                stats.qualifying_ontime_contribs += 1;
+            }
         }
         storage::store_member_stats(&env, &member, &stats);
 
@@ -509,7 +572,7 @@ impl AjoContract {
             group_id_cached,
             current_cycle,
             contribution_amount,
-            false, // on-time contribution
+            is_late,
             false,
         );
         let _ = crate::reputation::update_member_reputation(&env, &member);
@@ -578,10 +641,8 @@ impl AjoContract {
     /// * `GroupNotFound` - If the group does not exist
     /// * `IncompleteContributions` - If not all members have contributed
     /// * `GroupComplete` - If the group has already completed all payouts
-    /// * `NoMembers` - If the group has no members (should never happen)
     /// * `OutsideCycleWindow` - If grace period has not expired yet
     /// * `InsufficientContractBalance` - If contract doesn't have enough tokens
-    /// * `TransferFailed` - If the token transfer fails
     pub fn execute_payout(env: Env, group_id: u64) -> Result<(), AjoError> {
         // Check if paused
         pausable::ensure_not_paused(&env)?;
@@ -1067,7 +1128,6 @@ impl AjoContract {
     /// * `CannotCancelAfterPayout` - If any payout has been executed
     /// * `GroupCancelled` - If the group is already cancelled
     /// * `GroupComplete` - If the group is already complete
-    /// * `TransferFailed` - If any token refund transfer fails
     pub fn cancel_group(env: Env, creator: Address, group_id: u64) -> Result<(), AjoError> {
         pausable::ensure_not_paused(&env)?;
         creator.require_auth();
@@ -1229,7 +1289,7 @@ impl AjoContract {
     /// # Errors
     /// * `GroupNotFound` - If the group doesn't exist
     /// * `NotMember` - If the voter is not a member
-    /// * `NoRefundRequest` - If no refund request exists
+    /// * `RequestNotFound` - If no refund request exists
     /// * `AlreadyVoted` - If the member has already voted
     /// * `VotingPeriodEnded` - If the voting period has ended
     pub fn vote_refund(
@@ -1250,7 +1310,7 @@ impl AjoContract {
 
         // Get refund request
         let mut request = storage::get_refund_request(&env, group_id)
-            .ok_or(AjoError::NoRefundRequest)?;
+            .ok_or(AjoError::RequestNotFound)?;
 
         // Check if already voted
         if storage::has_voted(&env, group_id, &voter) {
@@ -1302,22 +1362,21 @@ impl AjoContract {
     ///
     /// # Errors
     /// * `GroupNotFound` - If the group doesn't exist
-    /// * `NoRefundRequest` - If no refund request exists
+    /// * `RequestNotFound` - If no refund request exists
     /// * `VotingPeriodActive` - If the voting period hasn't ended
     /// * `RefundNotApproved` - If the refund wasn't approved
-    /// * `RefundAlreadyExecuted` - If the refund has already been executed
-    /// * `TransferFailed` - If any token refund transfer fails
+    /// * `RequestAlreadyProcessed` - If the refund has already been executed
     pub fn execute_refund(env: Env, executor: Address, group_id: u64) -> Result<(), AjoError> {
         pausable::ensure_not_paused(&env)?;
         executor.require_auth();
 
         let mut group = storage::get_group(&env, group_id).ok_or(AjoError::GroupNotFound)?;
         let mut request = storage::get_refund_request(&env, group_id)
-            .ok_or(AjoError::NoRefundRequest)?;
+            .ok_or(AjoError::RequestNotFound)?;
 
         // Check if already executed
         if request.executed {
-            return Err(AjoError::RefundAlreadyExecuted);
+            return Err(AjoError::RequestAlreadyProcessed);
         }
 
         // Check voting period ended
@@ -1420,7 +1479,6 @@ impl AjoContract {
     /// * `Unauthorized` - If the caller is not the admin
     /// * `GroupNotFound` - If the group doesn't exist
     /// * `GroupCancelled` - If the group is already cancelled
-    /// * `TransferFailed` - If any token refund transfer fails
     pub fn emergency_refund(env: Env, admin: Address, group_id: u64) -> Result<(), AjoError> {
         admin.require_auth();
 
@@ -1515,12 +1573,12 @@ impl AjoContract {
     /// The refund request
     ///
     /// # Errors
-    /// * `NoRefundRequest` - If no refund request exists
+    /// * `RequestNotFound` - If no refund request exists
     pub fn get_refund_request(
         env: Env,
         group_id: u64,
     ) -> Result<crate::types::RefundRequest, AjoError> {
-        storage::get_refund_request(&env, group_id).ok_or(AjoError::NoRefundRequest)
+        storage::get_refund_request(&env, group_id).ok_or(AjoError::RequestNotFound)
     }
 
     /// Get refund record for a member.
@@ -2405,6 +2463,10 @@ pub fn get_refund_record(
 
         let group = storage::get_group(&env, group_id).ok_or(AjoError::GroupNotFound)?;
 
+        if group.is_complete {
+            return Err(AjoError::GroupComplete);
+        }
+
         if !utils::is_member(&group.members, &complainant) {
             return Err(AjoError::NotMember);
         }
@@ -2429,7 +2491,7 @@ pub fn get_refund_record(
             votes_for_action: 0,
             votes_against_action: 0,
             proposed_resolution,
-            final_resolution: None,
+            final_resolution: crate::types::DisputeResolution::NoAction,
         };
 
         storage::store_dispute(&env, dispute_id, &dispute);
@@ -2449,11 +2511,11 @@ pub fn get_refund_record(
     /// Any group member (except the defendant) may vote once during the voting period.
     ///
     /// # Errors
-    /// * `DisputeNotFound` – dispute doesn't exist
-    /// * `DisputeAlreadyResolved` – dispute is already resolved
-    /// * `NotDisputeMember` – voter is not a member of the group
-    /// * `AlreadyVotedOnDispute` – voter has already voted
-    /// * `VotingPeriodEndedDispute` – voting period has ended
+    /// * `RequestNotFound` – dispute doesn't exist
+    /// * `RequestAlreadyProcessed` – dispute is already resolved
+    /// * `NotMember` – voter is not a member of the group
+    /// * `AlreadyVoted` – voter has already voted
+    /// * `VotingPeriodEnded` – voting period has ended
     pub fn vote_on_dispute(
         env: Env,
         voter: Address,
@@ -2464,26 +2526,26 @@ pub fn get_refund_record(
         voter.require_auth();
 
         let mut dispute = storage::get_dispute(&env, dispute_id)
-            .ok_or(AjoError::DisputeNotFound)?;
+            .ok_or(AjoError::RequestNotFound)?;
 
         if dispute.status == crate::types::DisputeStatus::Resolved
             || dispute.status == crate::types::DisputeStatus::Rejected
         {
-            return Err(AjoError::DisputeAlreadyResolved);
+            return Err(AjoError::RequestAlreadyProcessed);
         }
 
         let group = storage::get_group(&env, dispute.group_id).ok_or(AjoError::GroupNotFound)?;
         if !utils::is_member(&group.members, &voter) {
-            return Err(AjoError::NotDisputeMember);
+            return Err(AjoError::NotMember);
         }
 
         if storage::has_voted_on_dispute(&env, dispute_id, &voter) {
-            return Err(AjoError::AlreadyVotedOnDispute);
+            return Err(AjoError::AlreadyVoted);
         }
 
         let now = utils::get_current_timestamp(&env);
         if now > dispute.voting_deadline {
-            return Err(AjoError::VotingPeriodEndedDispute);
+            return Err(AjoError::VotingPeriodEnded);
         }
 
         let vote = crate::types::DisputeVote {
@@ -2513,8 +2575,8 @@ pub fn get_refund_record(
     /// Otherwise the dispute is rejected.
     ///
     /// # Errors
-    /// * `DisputeNotFound` – dispute doesn't exist
-    /// * `DisputeAlreadyResolved` – already resolved
+    /// * `RequestNotFound` – dispute doesn't exist
+    /// * `RequestAlreadyProcessed` – already resolved
     /// * `VotingPeriodActive` – voting period hasn't ended yet
     pub fn resolve_dispute(
         env: Env,
@@ -2525,12 +2587,12 @@ pub fn get_refund_record(
         resolver.require_auth();
 
         let mut dispute = storage::get_dispute(&env, dispute_id)
-            .ok_or(AjoError::DisputeNotFound)?;
+            .ok_or(AjoError::RequestNotFound)?;
 
         if dispute.status == crate::types::DisputeStatus::Resolved
             || dispute.status == crate::types::DisputeStatus::Rejected
         {
-            return Err(AjoError::DisputeAlreadyResolved);
+            return Err(AjoError::RequestAlreadyProcessed);
         }
 
         let now = utils::get_current_timestamp(&env);
@@ -2545,7 +2607,7 @@ pub fn get_refund_record(
 
         if approved {
             dispute.status = crate::types::DisputeStatus::Resolved;
-            dispute.final_resolution = Some(dispute.proposed_resolution);
+            dispute.final_resolution = dispute.proposed_resolution;
 
             // Apply resolution
             match dispute.proposed_resolution {
@@ -2613,11 +2675,11 @@ pub fn get_refund_record(
             }
         } else {
             dispute.status = crate::types::DisputeStatus::Rejected;
-            dispute.final_resolution = Some(crate::types::DisputeResolution::NoAction);
+            dispute.final_resolution = crate::types::DisputeResolution::NoAction;
         }
 
         storage::store_dispute(&env, dispute_id, &dispute);
-        events::emit_dispute_resolved(&env, dispute_id, dispute.group_id, dispute.final_resolution.unwrap());
+        events::emit_dispute_resolved(&env, dispute_id, dispute.group_id, dispute.final_resolution);
 
         Ok(())
     }
@@ -2625,9 +2687,9 @@ pub fn get_refund_record(
     /// Returns a dispute by ID.
     ///
     /// # Errors
-    /// * `DisputeNotFound` – dispute doesn't exist
+    /// * `RequestNotFound` – dispute doesn't exist
     pub fn get_dispute(env: Env, dispute_id: u64) -> Result<crate::types::Dispute, AjoError> {
-        storage::get_dispute(&env, dispute_id).ok_or(AjoError::DisputeNotFound)
+        storage::get_dispute(&env, dispute_id).ok_or(AjoError::RequestNotFound)
     }
 
     /// Returns all dispute IDs for a group.
@@ -2822,6 +2884,158 @@ pub fn get_refund_record(
         min_score: u32,
     ) -> Result<(), AjoError> {
         crate::reputation::check_credit_requirement(&env, &member, min_score)
+    }
+
+    // ── Loans ────────────────────────────────────────────────────────────
+
+    /// Request a loan from the group's contribution pool.
+    ///
+    /// # Errors
+    /// * `GroupNotFound` – group doesn't exist
+    /// * `NotMember` – borrower is not a member of the group
+    pub fn request_loan(
+        env: Env,
+        group_id: u64,
+        borrower: Address,
+        amount: i128,
+        interest_rate_bps: u32,
+        repayment_period: u64,
+    ) -> Result<u64, AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::loan::request_loan(&env, group_id, borrower, amount, interest_rate_bps, repayment_period)
+    }
+
+    /// Vote on an open loan request.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – loan doesn't exist
+    /// * `RequestAlreadyProcessed` – loan is no longer pending
+    /// * `VotingPeriodEnded` – voting period has ended
+    /// * `NotMember` – voter is not a member of the loan's group
+    /// * `AlreadyVoted` – voter has already voted on this loan
+    pub fn vote_on_loan(
+        env: Env,
+        loan_id: u64,
+        voter: Address,
+        in_favor: bool,
+    ) -> Result<(), AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::loan::vote_on_loan(&env, loan_id, voter, in_favor)
+    }
+
+    /// Disburse an approved loan to the borrower.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – loan doesn't exist
+    /// * `RequestAlreadyProcessed` – loan is not in the Approved state
+    pub fn disburse_loan(env: Env, loan_id: u64) -> Result<(), AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::loan::disburse_loan(&env, loan_id)
+    }
+
+    /// Repay a loan, in part or in full.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – loan doesn't exist
+    /// * `RequestNotActive` – loan has not been disbursed yet
+    /// * `RepaymentExceedsBalance` – amount exceeds the outstanding balance
+    pub fn repay_loan(
+        env: Env,
+        loan_id: u64,
+        borrower: Address,
+        amount: i128,
+    ) -> Result<(), AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::loan::repay_loan(&env, loan_id, borrower, amount)
+    }
+
+    /// Get a loan request by ID.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – loan doesn't exist
+    pub fn get_loan(env: Env, loan_id: u64) -> Result<crate::types::LoanRequest, AjoError> {
+        crate::loan::get_loan(&env, loan_id)
+    }
+
+    /// Get all loan IDs for a group.
+    pub fn get_group_loans(env: Env, group_id: u64) -> Vec<u64> {
+        crate::loan::get_group_loans(&env, group_id)
+    }
+
+    // ── Emergency fund ───────────────────────────────────────────────────
+
+    /// Request an emergency withdrawal from the group's contribution pool.
+    ///
+    /// # Errors
+    /// * `GroupNotFound` – group doesn't exist
+    /// * `NotMember` – requester is not a member of the group
+    pub fn request_emergency(
+        env: Env,
+        group_id: u64,
+        requester: Address,
+        amount: i128,
+        reason: soroban_sdk::String,
+        repay_period: u64,
+    ) -> Result<u64, AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::emergency::request_emergency(&env, group_id, requester, amount, reason, repay_period)
+    }
+
+    /// Vote on an open emergency request.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – request doesn't exist
+    /// * `RequestAlreadyProcessed` – request is no longer pending
+    /// * `VotingPeriodEnded` – voting period has ended
+    /// * `NotMember` – voter is not a member of the request's group
+    /// * `AlreadyVoted` – voter has already voted on this request
+    pub fn vote_on_emergency(
+        env: Env,
+        req_id: u64,
+        voter: Address,
+        in_favor: bool,
+    ) -> Result<(), AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::emergency::vote_on_emergency(&env, req_id, voter, in_favor)
+    }
+
+    /// Disburse an approved emergency request.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – request doesn't exist
+    /// * `RequestAlreadyProcessed` – request is not in the Approved state
+    pub fn disburse_emergency(env: Env, req_id: u64, repay_period: u64) -> Result<(), AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::emergency::disburse_emergency(&env, req_id, repay_period)
+    }
+
+    /// Repay an emergency withdrawal, in part or in full.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – request doesn't exist
+    /// * `RequestNotActive` – request has not been disbursed yet
+    /// * `RepaymentExceedsBalance` – amount exceeds the outstanding balance
+    pub fn repay_emergency(
+        env: Env,
+        req_id: u64,
+        requester: Address,
+        amount: i128,
+    ) -> Result<(), AjoError> {
+        pausable::ensure_not_paused(&env)?;
+        crate::emergency::repay_emergency(&env, req_id, requester, amount)
+    }
+
+    /// Get an emergency request by ID.
+    ///
+    /// # Errors
+    /// * `RequestNotFound` – request doesn't exist
+    pub fn get_emergency_request(env: Env, req_id: u64) -> Result<crate::types::EmergencyRequest, AjoError> {
+        crate::emergency::get_emergency_request(&env, req_id)
+    }
+
+    /// Get all emergency request IDs for a group.
+    pub fn get_group_emergencies(env: Env, group_id: u64) -> Vec<u64> {
+        crate::emergency::get_group_emergencies(&env, group_id)
     }
 }
 

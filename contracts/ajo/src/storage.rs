@@ -1067,3 +1067,95 @@ pub fn get_payment_history(
     let key = (symbol_short!("MPAYHIST"), member);
     env.storage().persistent().get(&key)
 }
+
+// ── Loan storage ─────────────────────────────────────────────────────────
+
+/// Returns the next loan ID and increments the counter.
+pub fn get_next_loan_id(env: &Env) -> u64 {
+    let key = symbol_short!("LCOUNTER");
+    let id: u64 = env.storage().instance().get(&key).unwrap_or(0);
+    env.storage().instance().set(&key, &(id + 1));
+    id
+}
+
+/// Stores a loan request.
+pub fn store_loan(env: &Env, id: u64, loan: &crate::types::LoanRequest) {
+    let key = (symbol_short!("LOAN"), id);
+    env.storage().persistent().set(&key, loan);
+}
+
+/// Retrieves a loan request by ID.
+pub fn get_loan(env: &Env, id: u64) -> Option<crate::types::LoanRequest> {
+    let key = (symbol_short!("LOAN"), id);
+    env.storage().persistent().get(&key)
+}
+
+/// Records that a voter has voted on a loan request.
+pub fn store_loan_vote(env: &Env, loan_id: u64, voter: &Address, vote: &crate::types::LoanVote) {
+    let key = (symbol_short!("LOANVOTE"), loan_id, voter);
+    env.storage().persistent().set(&key, vote);
+}
+
+/// Returns `true` if the voter has already voted on this loan request.
+pub fn has_voted_on_loan(env: &Env, loan_id: u64, voter: &Address) -> bool {
+    let key = (symbol_short!("LOANVOTE"), loan_id, voter);
+    env.storage().persistent().has(&key)
+}
+
+/// Stores the list of loan IDs for a group.
+pub fn store_group_loan_ids(env: &Env, group_id: u64, ids: &Vec<u64>) {
+    let key = (symbol_short!("LOANGIDS"), group_id);
+    env.storage().persistent().set(&key, ids);
+}
+
+/// Retrieves the list of loan IDs for a group.
+pub fn get_group_loan_ids(env: &Env, group_id: u64) -> Vec<u64> {
+    let key = (symbol_short!("LOANGIDS"), group_id);
+    env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
+}
+
+// ── Emergency fund storage ──────────────────────────────────────────────
+
+/// Returns the next emergency request ID and increments the counter.
+pub fn get_next_emergency_id(env: &Env) -> u64 {
+    let key = symbol_short!("ECOUNTER");
+    let id: u64 = env.storage().instance().get(&key).unwrap_or(0);
+    env.storage().instance().set(&key, &(id + 1));
+    id
+}
+
+/// Stores an emergency request.
+pub fn store_emergency(env: &Env, id: u64, req: &crate::types::EmergencyRequest) {
+    let key = (symbol_short!("EMERG"), id);
+    env.storage().persistent().set(&key, req);
+}
+
+/// Retrieves an emergency request by ID.
+pub fn get_emergency(env: &Env, id: u64) -> Option<crate::types::EmergencyRequest> {
+    let key = (symbol_short!("EMERG"), id);
+    env.storage().persistent().get(&key)
+}
+
+/// Records that a voter has voted on an emergency request.
+pub fn store_emergency_vote(env: &Env, req_id: u64, voter: &Address, vote: &crate::types::EmergencyVote) {
+    let key = (symbol_short!("EMERGVOTE"), req_id, voter);
+    env.storage().persistent().set(&key, vote);
+}
+
+/// Returns `true` if the voter has already voted on this emergency request.
+pub fn has_voted_on_emergency(env: &Env, req_id: u64, voter: &Address) -> bool {
+    let key = (symbol_short!("EMERGVOTE"), req_id, voter);
+    env.storage().persistent().has(&key)
+}
+
+/// Stores the list of emergency request IDs for a group.
+pub fn store_group_emergency_ids(env: &Env, group_id: u64, ids: &Vec<u64>) {
+    let key = (symbol_short!("EMERGGIDS"), group_id);
+    env.storage().persistent().set(&key, ids);
+}
+
+/// Retrieves the list of emergency request IDs for a group.
+pub fn get_group_emergency_ids(env: &Env, group_id: u64) -> Vec<u64> {
+    let key = (symbol_short!("EMERGGIDS"), group_id);
+    env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
+}

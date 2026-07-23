@@ -63,10 +63,10 @@ pub fn vote_on_emergency(
 ) -> Result<(), AjoError> {
     voter.require_auth();
 
-    let mut req = storage::get_emergency(env, req_id).ok_or(AjoError::EmergencyRequestNotFound)?;
+    let mut req = storage::get_emergency(env, req_id).ok_or(AjoError::RequestNotFound)?;
 
     if req.status != EmergencyStatus::Pending {
-        return Err(AjoError::EmergencyAlreadyProcessed);
+        return Err(AjoError::RequestAlreadyProcessed);
     }
 
     let now = utils::get_current_timestamp(env);
@@ -106,10 +106,10 @@ pub fn vote_on_emergency(
 
 /// Disburse an approved emergency request.
 pub fn disburse_emergency(env: &Env, req_id: u64, repay_period: u64) -> Result<(), AjoError> {
-    let mut req = storage::get_emergency(env, req_id).ok_or(AjoError::EmergencyRequestNotFound)?;
+    let mut req = storage::get_emergency(env, req_id).ok_or(AjoError::RequestNotFound)?;
 
     if req.status != EmergencyStatus::Approved {
-        return Err(AjoError::EmergencyAlreadyProcessed);
+        return Err(AjoError::RequestAlreadyProcessed);
     }
 
     let now = utils::get_current_timestamp(env);
@@ -142,10 +142,10 @@ pub fn repay_emergency(
 ) -> Result<(), AjoError> {
     requester.require_auth();
 
-    let mut req = storage::get_emergency(env, req_id).ok_or(AjoError::EmergencyRequestNotFound)?;
+    let mut req = storage::get_emergency(env, req_id).ok_or(AjoError::RequestNotFound)?;
 
     if req.status != EmergencyStatus::Disbursed {
-        return Err(AjoError::EmergencyNotDisbursed);
+        return Err(AjoError::RequestNotActive);
     }
 
     let outstanding = req.amount - req.amount_repaid;
@@ -176,7 +176,7 @@ pub fn repay_emergency(
 
 /// Get an emergency request by ID.
 pub fn get_emergency_request(env: &Env, req_id: u64) -> Result<EmergencyRequest, AjoError> {
-    storage::get_emergency(env, req_id).ok_or(AjoError::EmergencyRequestNotFound)
+    storage::get_emergency(env, req_id).ok_or(AjoError::RequestNotFound)
 }
 
 /// Get all emergency request IDs for a group.
